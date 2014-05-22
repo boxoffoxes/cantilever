@@ -41,14 +41,25 @@ var_\name:
 .endm
 
 .macro entry key, addr
+.byte  2f - 1f
+1:
+.ascii "\key"
+2:
+.align 8, 0
+.int \addr
+.int 0
+.endm
+
+/*.macro entry key, addr
 .short \key
 .short \addr - _start
-.endm
+.endm*/
 
 
 .globl _start
 .align 4, 0x90
 _start:
+	cld
 	mov %esp, %esi
 	lea -2048(%esp), %esp // use part of call stack for data stack
 	mov var_H, %edi
@@ -69,6 +80,70 @@ prim key
 	movzbl var_K, %eax
 	pop %ecx
 	ret
+
+prim drop_spaces
+	// ( -- b )
+	call prim_key
+	cmp $' ', %al
+	ja 1f
+	_drop
+	jmp prim_drop_spaces
+1:
+	ret
+
+prim word
+	// ( -- l )   TODO: built-in stack smash here!
+	call prim_drop_spaces
+	push %edi
+	push %ecx
+	xor %ecx, %ecx
+	mov var_H, %edi  // use the heap for our temporary string buffer
+	inc %edi         // leave space for the char count.
+0:
+	call prim_store_byte_inc
+	inc %ecx
+	call prim_key
+	cmp $' ', %al
+	jbe 1f
+	jmp 0b
+1:
+	xor %eax, %eax        // zero %eax
+	stosl                 // add 8 bytes of zeroes after word
+	stosl
+	mov var_H, %edi
+	mov %cl, (%edi)       // save character count
+	mov %edi, %eax        // push the label address
+	pop %ecx
+	pop %edi
+	ret
+
+prim lookup_word
+	// ( l -- a )
+	push %edi
+	call prim_D      // -- l D
+	call prim_set_A  // -- l
+	_dup
+	mov (%eax), %eax // -- l n
+1:
+	// Test first cell
+	lea -16(%edi), %edi
+	call prim_fetch  // -- l n n1
+	test %eax, %eax
+	jz 2f
+	cmp (%esi), %eax
+	_drop            // -- l n
+	jne 1b
+	// found a match TODO: doesn't check second portion of label yet
+	mov 8(%edi), %eax  // -- l a
+	_nip               // -- a
+	pop %edi
+	ret
+2:
+	pop %edi
+	_nip             // -- n 0
+	_nip             // -- 0
+	ret
+
 
 prim lookup
 	// ( b -- a )
@@ -97,16 +172,15 @@ prim lookup
 	ret
 
 prim eval
-	// ( b -- ?? )
-	cmp $32, %eax // can't do anything with whitespace
-	jbe 2f
-
-	call prim_lookup
+	// ( l -- ?? )
+	mov %eax, %ebp   // store our label address somewhere harmless for future use
+	call prim_lookup_word
 	test %eax, %eax
 	jz 2f
 	mov (%eax), %bl
 	cmp $0x90, %bl	// if the first instruction is a nop then the word is immediate
 	je prim_exec
+	// fall-through
 prim compile_call
 	// ( a -- )
 	_immediate
@@ -119,8 +193,17 @@ prim compile_call
 	mov %edi, var_H
 	ret
 2:
+	// try to interpret as number
+	mov %ebp, %eax  // recover our saved address
+	call prim_parse_number
+	test %eax, %eax
+	jz 3f  // failed to parse a number
 	_drop
+	jmp prim_data
 	ret
+3:
+	movl $0x100, %eax
+	jmp prim_error
 
 prim exec
 	_immediate
@@ -129,18 +212,19 @@ prim exec
 	jmp *%ebx
 
 prim quote
+	// ( -- a )
 	_immediate
-	call prim_key
-	call prim_lookup
+	call prim_word
+	call prim_lookup_word
 	ret
 
 prim data
-	// ( b -- )
+	// ( n -- )
 	_immediate
 	_dup
-	mov $prim_literal_byte, %eax
-	call prim_compile_call
-	call prim_store_byte
+	mov $0xb8, %eax
+	call prim_store_byte_inc
+	call prim_store_inc
 	mov %edi, var_H
 	ret
 
@@ -238,14 +322,28 @@ prim cond_return
 1:
 	ret
 
-prim hex
-	_immediate
-	call prim_key
-	call prim_parse_hex_digit
+prim parse_number
+	// ( l -- n bool )
+	cmpb $'9', 1(%eax)  // TODO: need to handle this more gracefully. Also decimals
+	jg prim_bye
+prim parse_hex
+	// ( l -- n bool )
+	push %ecx
+	push %edi
+	xor %ecx, %ecx
+	movb (%edi), %cl
+	inc %edi
+	xor %eax, %eax
+1:
 	shl $4, %eax
-	call prim_key
+	call prim_fetch_byte_inc
 	call prim_parse_hex_digit
 	call prim_add
+	loop 1b
+	pop %edi
+	pop %ecx
+	_dup
+	mov $-1, %eax  // TODO always succeeds eek!
 	ret
 
 prim parse_hex_digit
@@ -285,14 +383,14 @@ prim emit_hex
 	ret
 
 prim def
-	// ( -- )
+	// ( -- )  TODO fix for using words
 	_immediate
 	call prim_get_A  // save A register
 	call prim_push   // ...on return stack
 	call prim_D      // get dict address
 	call prim_set_A  // ...and set A
 	call prim_key    // read a byte
-	call prim_store_byte // ...and store it in the dict
+	call prim_store_byte_inc // ...and store it in the dict
 	inc %edi         // skip unused byte
 	call prim_H      // get current heap address
 	subl $_start, %eax    // ... and subtract _start
@@ -310,17 +408,44 @@ prim fetch_byte
 	movzbl (%edi), %eax
 	ret
 
+prim fetch_byte_inc
+	_dup
+	movzbl (%edi), %eax
+	inc %edi
+	ret
+
+prim fetch
+	_dup
+	movl (%edi), %eax
+	ret
+
+prim fetch_inc
+	_dup
+	movl (%edi), %eax
+	lea 4(%edi), %edi
+	ret
+
 prim store_byte
+	movb %al, (%edi)
+	_drop
+	ret
+
+prim store_byte_inc
 	stosb
 	_drop
 	ret
 
 prim store_alloc_byte
-	call prim_store_byte
+	call prim_store_byte_inc
 	mov %edi, var_H
 	ret
 
 prim store
+	movl %eax, (%edi)
+	_drop
+	ret
+
+prim store_inc
 	stosl
 	_drop
 	ret
@@ -340,13 +465,15 @@ prim emit
 	ret
 
 prim repl
-	call prim_key
+	call prim_word
 	call prim_eval
 	jmp prim_repl
 
 prim bye
 	xor %eax, %eax
+prim error
 	mov %eax, %ebx
+	xor %eax, %eax
 	inc %eax
 	int $0x80
 
@@ -359,39 +486,60 @@ variable M, prim_repl // addr of main function
 heap:
 .space 1024
 
-
+.align 8,0
 dict:
-entry 0, _start
-entry 'A', prim_get_A
-entry 'D', prim_D
-entry 'H', prim_H
-entry 'M', prim_M
-entry 'K', prim_K
-entry 'R', prim_pop
+entry "", _start
+entry "dict",  prim_D
+entry "here",  prim_H
+entry "main",  prim_M
 
-entry  'a', prim_set_A
-entry  'b', prim_bye
-entry  'd', prim_dup
-entry  'e', prim_emit
-entry  'h', prim_emit_hex
-entry  'k', prim_key
-entry  'l', prim_repl
-entry  'o', prim_drop
-entry  'r', prim_push
-entry  'x', prim_hex
-entry  '$', prim_data
-entry  '@', prim_fetch_byte
-entry  '!', prim_store_byte
-entry  '+', prim_add
-entry  '-', prim_subtract
-entry  '#', prim_exec
-entry  ':', prim_def
-entry  '\'', prim_quote
-entry  ',', prim_store_alloc_byte
-entry  '=', prim_equals
-entry  '?', prim_cond_return
-entry  '<', prim_less_than
-entry  '>', prim_greater_than
+// memory access
+entry "a@",       prim_get_A
+entry "a!",       prim_set_A
+entry "@",        prim_fetch
+entry "@b",       prim_fetch_byte
+entry "!",        prim_store
+entry "!+",       prim_store_inc
+entry "!b",       prim_store_byte
+entry "!b+",      prim_store_byte_inc
+
+// word manipulation
+entry ":",        prim_def
+entry "'",        prim_quote
+entry "#",        prim_exec
+
+// stack manipulation
+entry "dup",      prim_dup
+entry "drop",     prim_drop
+entry "nip",      prim_nip
+entry "swap",     prim_swap
+
+// return stack manipulation
+entry "push",     prim_push
+entry "pop",      prim_pop
+
+// Arithmetic
+entry "+",        prim_add
+entry "-",        prim_subtract
+
+// logical and conditional
+entry "=",        prim_equals
+entry "<",        prim_less_than
+entry ">",        prim_greater_than
+entry "?;",       prim_cond_return
+
+// IO
+entry "emit",     prim_emit
+entry "emitHex",  prim_emit_hex
+
+// Misc
+entry "bye",      prim_bye
+entry "key",      prim_key
+entry "word",     prim_word
+
+// legacy
+entry "$",        prim_data
+entry ",",        prim_store_alloc_byte
 end_dict:
 
 
