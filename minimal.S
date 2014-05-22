@@ -215,7 +215,17 @@ prim quote
 	// ( -- a )
 	_immediate
 	call prim_word
+	mov %eax, %ebp    // save string address
 	call prim_lookup_word
+	test %eax, %eax
+	jnz 1f
+	// lookup failed 
+	mov %ebp, %eax
+	call prim_parse_number
+	test %eax, %eax
+	jz prim_bye   // TODO error function
+	_drop
+1:
 	ret
 
 prim data
@@ -390,7 +400,7 @@ prim emit_hex
 	ret
 
 prim def
-	// ( -- )  TODO fix for using words
+	// ( -- )  TODO should align to cell boundary with nop.
 	_immediate
 	push %edi
 	call prim_word   // -- l
@@ -456,6 +466,14 @@ prim store_inc
 	_drop
 	ret
 
+prim store_to_addr_on_stack
+	// ( n a -- )	
+	mov (%esi), %ebx
+	_nip
+	mov %ebx, (%eax)
+	_drop
+	ret
+
 prim emit
 	push %ecx
 	push %eax
@@ -508,6 +526,7 @@ entry "!",        prim_store
 entry "!+",       prim_store_inc
 entry "!b",       prim_store_byte
 entry "!b+",      prim_store_byte_inc
+entry "!!",       prim_store_to_addr_on_stack
 
 // word manipulation
 entry ":",        prim_def
