@@ -221,10 +221,16 @@ prim quote
 prim data
 	// ( n -- )
 	_immediate
+	_dup                   // -- n n
+	mov $0x89fc768d, %eax  // -- n x    this is _dup in hex. TODO: proper inlining!
+	call prim_store_inc    // -- n
+	_dup                   // -- n n
+	mov $0x06, %al         // -- n xb   last byte of _dup
+	call prim_store_byte_inc // -- n
 	_dup
-	mov $0xb8, %eax
-	call prim_store_byte_inc
-	call prim_store_inc
+	mov $0xb8, %eax          // -- n b   movb instruction
+	call prim_store_byte_inc // -- n
+	call prim_store_inc      // --
 	mov %edi, var_H
 	ret
 
@@ -282,6 +288,7 @@ prim add
 	ret
 
 prim subtract
+	_swap
 	subl (%esi), %eax
 	_nip
 	ret
@@ -385,23 +392,22 @@ prim emit_hex
 prim def
 	// ( -- )  TODO fix for using words
 	_immediate
-	call prim_get_A  // save A register
-	call prim_push   // ...on return stack
-	call prim_D      // get dict address
-	call prim_set_A  // ...and set A
-	call prim_key    // read a byte
-	call prim_store_byte_inc // ...and store it in the dict
-	inc %edi         // skip unused byte
-	call prim_H      // get current heap address
-	subl $_start, %eax    // ... and subtract _start
-	mov %ax, (%edi)  // copy the low 16 bits from ToS to the dict
-	inc %edi         // and increment
-	inc %edi         // ...by 16 bits
-	mov %edi, var_D  // save new dictionary address
-	call prim_pop    // fetch stored value from rstack
-	call prim_set_A  // and restore to A register
+	push %edi
+	call prim_word   // -- l
+	_dup
+	mov 4(%eax), %eax // -- id1
+	_swap
+	mov (%eax), %eax // -- id1 id0    // make an identifier
+	call prim_D      // -- id1 id0 a  // get dict address
+	call prim_set_A  // -- id1 id0    // ...and set A
+	call prim_store_inc   // -- id0 
+	call prim_store_inc   // -- 
+	call prim_H      // -- a     // current heap address
+	call prim_store_inc   // --       // store the code address
+	add $4, %edi     // --       // unused cell
+	mov %edi, var_D  // --       // save new dictionary address
+	pop %edi
 	ret
-
 
 prim fetch_byte
 	_dup
