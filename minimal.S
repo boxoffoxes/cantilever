@@ -21,23 +21,32 @@
 
 // a word is immediate if its first instruction is a nop
 .macro _immediate
-	nop
+	//nop
 .endm
 
 // every primitive is word-aligned for speed of execution
 .macro prim label
-.align 4,0x90
+.byte 0x90
+.align 4, 0x90
 prim_\label:
 .endm
 
 .macro variable name, val=0
 prim \name
 	_dup
-	mov var_\name, %eax
+	mov $var_\name, %eax
 	ret
 .align 4
 var_\name:
 	.int \val
+.endm
+
+.macro message label txt
+msg_\label:
+	.byte 2f-1f
+1:
+	.ascii "\txt"
+2:
 .endm
 
 .macro entry key, addr
@@ -120,7 +129,8 @@ prim word
 prim lookup_word
 	// ( l -- a )
 	push %edi
-	call prim_D      // -- l D
+	call prim_D      // -- l @D
+	call prim_fetch_from_addr_on_stack // -- l D
 	call prim_set_A  // -- l
 	_dup
 	mov (%eax), %eax // -- l n
@@ -148,7 +158,8 @@ prim lookup_word
 prim lookup
 	// ( b -- a )
 	push %edi
-	call prim_D          // -- b D
+	call prim_D          // -- b @D
+	call prim_fetch_from_addr_on_stack  // -- b D
 	call prim_set_A      // -- b
 1:
 	lea -4(%edi), %edi
@@ -179,11 +190,10 @@ prim eval
 	jz 2f
 	mov (%eax), %bl
 	cmp $0x90, %bl	// if the first instruction is a nop then the word is immediate
-	je prim_exec
+	je prim_apply
 	// fall-through
 prim compile_call
 	// ( a -- )
-	_immediate
 	movb $0xe8, (%edi)
 	inc %edi
 	lea 4(%edi), %edi
@@ -197,19 +207,10 @@ prim compile_call
 	mov %ebp, %eax  // recover our saved address
 	call prim_parse_number
 	test %eax, %eax
-	jz 3f  // failed to parse a number
+	jz parse_fail  // failed to parse a number. Error handling shared with prim_quote
 	_drop
 	jmp prim_data
 	ret
-3:
-	movl $0x100, %eax
-	jmp prim_error
-
-prim exec
-	_immediate
-	mov %eax, %ebx
-	_drop
-	jmp *%ebx
 
 prim quote
 	// ( -- a )
@@ -218,15 +219,40 @@ prim quote
 	mov %eax, %ebp    // save string address
 	call prim_lookup_word
 	test %eax, %eax
+	stc  // something that can be tested to determine if we have an address or a number
 	jnz 1f
 	// lookup failed 
 	mov %ebp, %eax
 	call prim_parse_number
 	test %eax, %eax
-	jz prim_bye   // TODO error function
+	jz parse_fail
 	_drop
 1:
 	ret
+
+parse_fail:
+	mov %ebp, %eax
+	_swap
+	mov $msg_not_found, %eax
+	jmp prim_fail
+
+prim apply
+	// ( a -- ?? )
+	mov %eax, %ebx
+	_drop
+	jmp *%ebx
+
+prim exec
+	// ( -- ? )
+	_immediate
+	call prim_quote
+	jnc 1f   // carry flag not set - this is a literal, not a function
+	jmp prim_apply
+1:
+	mov %ebp, %eax
+	_dup
+	mov $msg_tried_to_execute_a_literal, %eax
+	jmp prim_fail
 
 prim data
 	// ( n -- )
@@ -303,6 +329,13 @@ prim subtract
 	_nip
 	ret
 
+prim inc
+	inc %eax
+	ret
+
+prim dec
+	dec %eax
+	ret
 
 prim equals
 	cmp (%esi), %eax
@@ -341,8 +374,8 @@ prim cond_return
 
 prim parse_number
 	// ( l -- n bool )
-	cmpb $'9', 1(%eax)  // TODO: need to handle this more gracefully. Also decimals
-	jg prim_bye
+	cmpb $'9', 1(%eax)  // TODO: decimals
+	jg 3f
 prim parse_hex
 	// ( l -- n bool )
 	push %ecx
@@ -362,15 +395,26 @@ prim parse_hex
 	_dup
 	mov $-1, %eax  // TODO always succeeds eek!
 	ret
+3:
+	xor %eax, %eax
+	_dup
+	ret
 
 prim parse_hex_digit
+	// ( b -- n )
 	sub $'0', %al
 	cmp $9, %al
 	jbe 1f
 	sub $('a' - ':'), %al
-	// TODO: error checking
+	cmp $15, %al
+	ja parse_number_fail
 1:
 	ret
+parse_number_fail:
+	mov %ebp, %eax
+	_dup 
+	mov $msg_number_parse_fail, %eax
+	jmp prim_fail
 
 prim extract_hex_digit
 	_dup
@@ -399,20 +443,32 @@ prim emit_hex
 	pop %ecx
 	ret
 
+prim align_heap
+	// ( -- )
+	mov var_H, %ebx
+	movl $0x90909090, (%ebx)
+	addl $4, %ebx
+	andl $0xfffffffb, %ebx
+	mov %ebx, var_H
+	ret
+
 prim def
 	// ( -- )  TODO should align to cell boundary with nop.
 	_immediate
 	push %edi
+	call prim_align_heap
 	call prim_word   // -- l
 	_dup
 	mov 4(%eax), %eax // -- id1
 	_swap
 	mov (%eax), %eax // -- id1 id0    // make an identifier
-	call prim_D      // -- id1 id0 a  // get dict address
+	call prim_D      // -- id1 id0 @d  // get dict address
+	call prim_fetch_from_addr_on_stack // id1 id0 d
 	call prim_set_A  // -- id1 id0    // ...and set A
 	call prim_store_inc   // -- id0 
 	call prim_store_inc   // -- 
-	call prim_H      // -- a     // current heap address
+	call prim_H      // -- @h     // current heap address
+	call prim_fetch_from_addr_on_stack  // -- h
 	call prim_store_inc   // --       // store the code address
 	add $4, %edi     // --       // unused cell
 	mov %edi, var_D  // --       // save new dictionary address
@@ -433,6 +489,11 @@ prim fetch_byte_inc
 prim fetch
 	_dup
 	movl (%edi), %eax
+	ret
+
+prim fetch_from_addr_on_stack
+	// ( a -- n )
+	mov (%eax), %eax
 	ret
 
 prim fetch_inc
@@ -493,9 +554,43 @@ prim repl
 	call prim_eval
 	jmp prim_repl
 
+prim emit_id
+	// ( id -- )
+	push %ecx
+	push %edi
+	xor %ecx, %ecx
+	mov (%eax), %cl
+	mov %eax, %edi
+	inc %edi
+1:
+	call prim_fetch_byte_inc
+	call prim_emit
+	loop 1b
+	pop %edi
+	pop %ecx
+	_drop
+	ret
+
+prim warn
+	// ( id id -- )
+	call prim_emit_id
+	call prim_emit_id
+	_dup
+	mov $'\n', %eax
+	call prim_emit
+	ret
+
+prim fail
+	// ( id id -- )
+	call prim_warn
+	_dup
+	mov $1, %eax
+	jmp prim_exit
+
 prim bye
+	_immediate
 	xor %eax, %eax
-prim error
+prim exit
 	mov %eax, %ebx
 	xor %eax, %eax
 	inc %eax
@@ -506,6 +601,12 @@ variable D, end_dict  // dictionary
 variable H, heap      // heap addr
 variable K, 0         // last key read
 variable M, prim_repl // addr of main function
+
+message not_found "Not a dictionary word or number: "
+message number_parse_fail "Invalid number format: "
+message welcome "Cantilever v0.0\n"
+message tried_to_execute_a_literal "Tried to execute a non-function value: "
+
 
 heap:
 .space 1024
@@ -520,7 +621,8 @@ entry "main",  prim_M
 // memory access
 entry "a@",       prim_get_A
 entry "a!",       prim_set_A
-entry "@",        prim_fetch
+//entry "@",        prim_fetch
+entry "@",       prim_fetch_from_addr_on_stack
 entry "@b",       prim_fetch_byte
 entry "!",        prim_store
 entry "!+",       prim_store_inc
@@ -529,9 +631,9 @@ entry "!b+",      prim_store_byte_inc
 entry "!!",       prim_store_to_addr_on_stack
 
 // word manipulation
-entry ":",        prim_def
-entry "'",        prim_quote
-entry "#",        prim_exec
+entry ":",        prim_def-1
+entry "'",        prim_quote-1
+entry "#",        prim_exec-1
 
 // stack manipulation
 entry "dup",      prim_dup
@@ -546,6 +648,8 @@ entry "pop",      prim_pop
 // Arithmetic
 entry "+",        prim_add
 entry "-",        prim_subtract
+entry "1+",       prim_inc
+entry "1-",       prim_dec
 
 // logical and conditional
 entry "=",        prim_equals
@@ -554,11 +658,14 @@ entry ">",        prim_greater_than
 entry "?;",       prim_cond_return
 
 // IO
-entry "emit",     prim_emit
-entry "emitHex",  prim_emit_hex
+entry ".",     prim_emit
+entry ".h",  prim_emit_hex
+entry ".id",   prim_emit_id
 
 // Misc
+entry "#bye",     prim_bye-1
 entry "bye",      prim_bye
+entry "exit",     prim_exit
 entry "key",      prim_key
 entry "word",     prim_word
 

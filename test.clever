@@ -1,35 +1,57 @@
-: #immediate
-	' 90  ' , # 
+: _nop
+	' 90  # , 
 	90 ,
-	' c3  ' , #
+	' 0c3  # ,
 
-: ;   #immediate
-	c3 ,
+: _ret
+: ;
+	_nop
+	0c3 ,
 ;
 
-: nl 0a emit ;
+: #immediate
+	dict @
+	4 -
+	dup @ 1-
+	swap !!
+;
+	
 
-: tick
-	dup emitHex nl ;
 
+: nl 0a . ;
+
+: #tick
+	2e .
+; #immediate
+
+#tick
 
 : #smudge #immediate
 	dict @
-	16 - 
+	10 - 
 	dict !!
 ;
 
+#tick
+
+: --
+	0a key = ?;
+	--
+;  #immediate
+
+#tick
 
 : (   #immediate
 : _comment
-	29 key = ?;
-	comment
+	29 key =
+		swap drop ?;
+	_comment ;
 ; #smudge
 
 
+#tick
 
-' nl #
+-- this is a comment
+( testing comments )
 
-
-( testing comments
-
+-- vim:ft=cantilever
