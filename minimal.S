@@ -21,13 +21,10 @@
 
 // a word is immediate if its first instruction is a nop
 .macro _immediate
-	//nop
+	nop
 .endm
 
-// every primitive is word-aligned for speed of execution
 .macro prim label
-.byte 0x90
-.align 4, 0x90
 prim_\label:
 .endm
 
@@ -59,12 +56,6 @@ msg_\label:
 .int 0
 .endm
 
-/*.macro entry key, addr
-.short \key
-.short \addr - _start
-.endm*/
-
-
 .globl _start
 .align 4, 0x90
 _start:
@@ -75,7 +66,7 @@ _start:
 	jmp *var_M
 
 prim key
-	// ( -- b )
+	// ( -- b / K )
 	_dup
 	push %ecx
 	xor %ebx, %ebx
@@ -91,7 +82,7 @@ prim key
 	ret
 
 prim drop_spaces
-	// ( -- b )
+	// ( -- b / K )
 	call prim_key
 	cmp $' ', %al
 	ja 1f
@@ -101,7 +92,7 @@ prim drop_spaces
 	ret
 
 prim word
-	// ( -- l )   TODO: built-in stack smash here!
+	// ( -- l / Kw )   TODO: built-in stack smash here!
 	call prim_drop_spaces
 	push %edi
 	push %ecx
@@ -124,6 +115,32 @@ prim word
 	mov %edi, %eax        // push the label address
 	pop %ecx
 	pop %edi
+	ret
+
+prim get_suffix
+	// ( l -- l a )
+	_dup
+	movzbl (%eax), %eax
+	addl (%esi), %eax
+	movb (%eax), %al
+	xor %ebx, %ebx
+	push %ebx
+	shl $24, %eax           // -- 0 0xBB000000
+	addl $0x5f5f03, %eax  // -- 0 3"__b"
+	push %eax
+	movl %esp, %eax
+	call prim_lookup_word
+	pop %ebx // discard label buffer
+	pop %ebx
+	ret
+
+prim strip_suffix
+	// ( l0 -- l1 )
+	xor %ebx, %ebx
+	movb (%eax), %bl
+	decb (%eax)
+	addl %eax, %ebx
+	movb $0, (%ebx)
 	ret
 
 prim lookup_word
@@ -154,44 +171,33 @@ prim lookup_word
 	_nip             // -- 0
 	ret
 
-
-prim lookup
-	// ( b -- a )
-	push %edi
-	call prim_D          // -- b @D
-	call prim_fetch_from_addr_on_stack  // -- b D
-	call prim_set_A      // -- b
-1:
-	lea -4(%edi), %edi
-	call prim_fetch_byte // -- b b1
-	mov %al, %ah
-	mov (%esi), %al      // -- b b1b pack bytes to be compared into %eax
-	_nip                 // -- b1b
-	test %ah, %ah
-	jz 2f               // end of dict with no match
-	cmp %ah, %al
-	jne 1b
-	// found a match
-	mov (%edi), %eax
-	shr $16, %eax        // remove the key
-	add $_start, %eax    // uncompress addr
-	pop %edi
-	ret
-2:
-	xor %eax, %eax       // lookup failed. Return zero
-	pop %edi
-	ret
-
 prim eval
 	// ( l -- ?? )
 	mov %eax, %ebp   // store our label address somewhere harmless for future use
-	call prim_lookup_word
+	call prim_lookup_word  // -- a
 	test %eax, %eax
-	jz 2f
-	mov (%eax), %bl
-	cmp $0x90, %bl	// if the first instruction is a nop then the word is immediate
+	jz 1f
+	cmpb $0x90, (%eax)  // immediate words
 	je prim_apply
-	// fall-through
+	jmp prim_compile_call
+1:
+	mov %ebp, %eax         // -- l
+	call prim_parse_number // -- n bool
+	test %eax, %eax
+	_drop                  // -- n
+	jz 2f
+	jmp prim_data
+2:
+	mov %ebp, %eax         // -- l
+	call prim_get_suffix   // -- l a
+	test %eax, %eax
+	jz parse_fail
+	_swap                  // -- a l
+	call prim_strip_suffix // -- a l1
+	_swap                  // -- l1 a
+	jmp prim_apply
+
+
 prim compile_call
 	// ( a -- )
 	movb $0xe8, (%edi)
@@ -202,28 +208,17 @@ prim compile_call
 	_drop
 	mov %edi, var_H
 	ret
-2:
-	// try to interpret as number
-	mov %ebp, %eax  // recover our saved address
-	call prim_parse_number
-	test %eax, %eax
-	jz parse_fail  // failed to parse a number. Error handling shared with prim_quote
-	_drop
-	jmp prim_data
-	ret
 
 prim quote
-	// ( -- a )
-	_immediate
-	call prim_word
+	// ( l -- an )
 	mov %eax, %ebp    // save string address
-	call prim_lookup_word
+	call prim_lookup_word  // -- a
 	test %eax, %eax
 	stc  // something that can be tested to determine if we have an address or a number
 	jnz 1f
 	// lookup failed 
 	mov %ebp, %eax
-	call prim_parse_number
+	call prim_parse_number // -- n bool
 	test %eax, %eax
 	jz parse_fail
 	_drop
@@ -237,16 +232,15 @@ parse_fail:
 	jmp prim_fail
 
 prim apply
-	// ( a -- ?? )
+	// ( a -- )
 	mov %eax, %ebx
 	_drop
 	jmp *%ebx
 
 prim exec
-	// ( -- ? )
-	_immediate
-	call prim_quote
-	jnc 1f   // carry flag not set - this is a literal, not a function
+	// ( l -- ? )
+	call prim_quote  //  -- n
+	jnc 1f           // carry flag not set - this is a literal, not a function
 	jmp prim_apply
 1:
 	mov %ebp, %eax
@@ -374,47 +368,56 @@ prim cond_return
 
 prim parse_number
 	// ( l -- n bool )
-	cmpb $'9', 1(%eax)  // TODO: decimals
-	jg 3f
+	mov 1(%eax), %ebx
+	cmpw $0x7830, %bx       // 0x prefix
+	je prim_parse_hex
+
+	xor %eax, %eax
+	_dup
+	ret
+
 prim parse_hex
 	// ( l -- n bool )
 	push %ecx
 	push %edi
 	xor %ecx, %ecx
 	movb (%edi), %cl
-	inc %edi
+	dec %cl       // skip the
+	dec %cl       // 0x prefix
+	add $3, %edi  // ...
 	xor %eax, %eax
 1:
-	shl $4, %eax
-	call prim_fetch_byte_inc
-	call prim_parse_hex_digit
-	call prim_add
+	shl $4, %eax                       // -- n
+	call prim_fetch_byte_inc           // -- n b
+	call prim_parse_hex_digit          // -- n n
+	jnc 3f    // carry not set = failure
+	call prim_add                      // -- n
 	loop 1b
 	pop %edi
 	pop %ecx
 	_dup
-	mov $-1, %eax  // TODO always succeeds eek!
+	mov $-1, %eax
 	ret
 3:
+	pop %edi
+	pop %ecx
 	xor %eax, %eax
-	_dup
 	ret
+
 
 prim parse_hex_digit
 	// ( b -- n )
-	sub $'0', %al
-	cmp $9, %al
+	subb $'0', %al
+	cmpb $9, %al
 	jbe 1f
-	sub $('a' - ':'), %al
-	cmp $15, %al
-	ja parse_number_fail
-1:
+	subb $('a' - ':'), %al
+	cmpb $15, %al
+	jbe 1f
+	clc  // indicate failure
 	ret
-parse_number_fail:
-	mov %ebp, %eax
-	_dup 
-	mov $msg_number_parse_fail, %eax
-	jmp prim_fail
+1:
+	stc  // indicate success
+	ret
 
 prim extract_hex_digit
 	_dup
@@ -430,6 +433,12 @@ prim extract_hex_digit
 
 prim emit_hex
 	push %ecx
+	_dup
+	mov $'0', %eax
+	call prim_emit
+	_dup
+	mov $'x', %eax
+	call prim_emit
 	xor %ecx, %ecx
 1:
 	call prim_extract_hex_digit
@@ -443,21 +452,9 @@ prim emit_hex
 	pop %ecx
 	ret
 
-prim align_heap
-	// ( -- )
-	mov var_H, %ebx
-	movl $0x90909090, (%ebx)
-	addl $4, %ebx
-	andl $0xfffffffb, %ebx
-	mov %ebx, var_H
-	ret
-
 prim def
-	// ( -- )  TODO should align to cell boundary with nop.
-	_immediate
+	// ( l -- )  TODO should align to cell boundary with nop.
 	push %edi
-	call prim_align_heap
-	call prim_word   // -- l
 	_dup
 	mov 4(%eax), %eax // -- id1
 	_swap
@@ -588,7 +585,6 @@ prim fail
 	jmp prim_exit
 
 prim bye
-	_immediate
 	xor %eax, %eax
 prim exit
 	mov %eax, %ebx
@@ -631,9 +627,9 @@ entry "!b+",      prim_store_byte_inc
 entry "!!",       prim_store_to_addr_on_stack
 
 // word manipulation
-entry ":",        prim_def-1
-entry "'",        prim_quote-1
-entry "#",        prim_exec-1
+entry "__:",        prim_def
+entry "__'",        prim_quote
+entry "__#",        prim_exec
 
 // stack manipulation
 entry "dup",      prim_dup
@@ -659,15 +655,16 @@ entry "?;",       prim_cond_return
 
 // IO
 entry ".",     prim_emit
-entry ".h",  prim_emit_hex
+entry ".h",    prim_emit_hex
 entry ".id",   prim_emit_id
 
 // Misc
-entry "#bye",     prim_bye-1
 entry "bye",      prim_bye
 entry "exit",     prim_exit
 entry "key",      prim_key
 entry "word",     prim_word
+entry "find",     prim_lookup_word
+entry "apply",    prim_apply
 
 // legacy
 entry "$",        prim_data

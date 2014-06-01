@@ -1,55 +1,56 @@
-: _nop
-	' 90  # , 
-	90 ,
-	' 0c3  # ,
+immediate:
+	0x90 ,
+	0xc3' ,#
 
-: _ret
-: ;
-	_nop
-	0c3 ,
+__;:
+	drop 0xc3 ,
 ;
 
-: #immediate
-	dict @
-	4 -
-	dup @ 1-
-	swap !!
+nl: 0x0a . ;
+
+tick:
+	0x2e .
 ;
-	
 
+tick#
 
-: nl 0a . ;
-
-: #tick
-	2e .
-; #immediate
-
-#tick
-
-: #smudge #immediate
+smudge:
 	dict @
-	10 - 
+	0x10 - 
 	dict !!
 ;
 
-#tick
+tick#
 
-: --
-	0a key = ?;
-	--
-;  #immediate
-
-#tick
-
-: (   #immediate
-: _comment
-	29 key =
-		swap drop ?;
+__(:
+_comment:
+	drop
+	0x29 key = ?;
 	_comment ;
-; #smudge
+; smudge#
 
+tick#
 
-#tick
+--:  immediate#
+_eol_comment:
+	0x0a key = ?;
+	_eol_comment
+; smudge#
+
+tick#
+
+__@:
+	find apply @
+;
+
+__!:
+	find apply !
+;
+
+__':
+	
+;
+
 
 -- this is a comment
 ( testing comments )
