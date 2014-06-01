@@ -373,8 +373,7 @@ prim endif
 	_immediate
 	mov %eax, %ebx
 	subl %edi, %ebx
-	not %ebx
-	inc %ebx
+	not %ebx  // this is one less than %edi-%ebx, which is correct
 	test $0x100, %ebx
 	jnz 1f
 	movb %bl, (%eax)
