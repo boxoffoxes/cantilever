@@ -2,17 +2,11 @@ immediate:
 	0x90 ,
 	0xc3' ,#
 
-__;:
-	drop 0xc3 ,
-;
+__;: drop 0xc3 , ;
 
-nl: 0x0a . ;
+__@: find apply @ ;
 
-tick:
-	0x2e .
-;
-
-tick#
+__!: find apply !  ;
 
 smudge:
 	dict @
@@ -20,16 +14,14 @@ smudge:
 	dict !!
 ;
 
-tick#
-
-__(:
+(: immediate#
 _comment:
-	drop
-	0x29 key = ?;
+	0x29 key = swap drop ?;
 	_comment ;
 ; smudge#
 
-tick#
+
+( now we have comments! )
 
 --:  immediate#
 _eol_comment:
@@ -37,22 +29,10 @@ _eol_comment:
 	_eol_comment
 ; smudge#
 
-tick#
-
-__@:
-	find apply @
-;
-
-__!:
-	find apply !
-;
-
-__':
-	
-;
+-- and single-line comments
 
 
--- this is a comment
-( testing comments )
+nl: 0x0a . ;  ( -- )
+
 
 -- vim:ft=cantilever

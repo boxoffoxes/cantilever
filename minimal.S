@@ -177,7 +177,8 @@ prim eval
 	call prim_lookup_word  // -- a
 	test %eax, %eax
 	jz 1f
-	cmpb $0x90, (%eax)  // immediate words
+	movb (%eax), %bl
+	cmpb $0x90, %bl  // immediate words
 	je prim_apply
 	jmp prim_compile_call
 1:
@@ -200,6 +201,7 @@ prim eval
 
 prim compile_call
 	// ( a -- )
+	mov %edi, var_Z  // save addr of last compiled instruction
 	movb $0xe8, (%edi)
 	inc %edi
 	lea 4(%edi), %edi
@@ -250,7 +252,7 @@ prim exec
 
 prim data
 	// ( n -- )
-	_immediate
+	mov %edi, var_Z        // -- save addr of instr
 	_dup                   // -- n n
 	mov $0x89fc768d, %eax  // -- n x    this is _dup in hex. TODO: proper inlining!
 	call prim_store_inc    // -- n
@@ -366,14 +368,69 @@ prim cond_return
 1:
 	ret
 
+prim endif
+	// ( a -- )
+	_immediate
+	mov %eax, %ebx
+	subl %edi, %ebx
+	not %ebx
+	inc %ebx
+	test $0x100, %ebx
+	jnz 1f
+	movb %bl, (%eax)
+	_drop
+	ret
+1:
+	mov $msg_failed_conditional, %eax
+	_dup
+	mov $msg_failed_conditional, %eax
+	jmp prim_fail
+
+prim if
+	// ( -- a )
+	_immediate
+	_dup
+	mov $0x74adc085, %eax // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
+	stosl
+	mov %edi, %eax   // leave a copy of the target on the stack
+	movb $0, (%edi)    // leave space for the offset
+	inc %edi
+	mov %edi, var_H  // update the free address
+	ret
+
+
 prim parse_number
 	// ( l -- n bool )
 	mov 1(%eax), %ebx
 	cmpw $0x7830, %bx       // 0x prefix
 	je prim_parse_hex
-
+	// no prefix? fall through to base 10
+prim parse_dec
+	// ( l -- n bool )
+	push %ecx
+	push %edi
+	xor %ecx, %ecx
+	movb (%edi), %cl
+	inc %edi   // skip count
 	xor %eax, %eax
+	mov $10, %ebx
+1:
+	mull %ebx    // %eax * 10
+	call prim_fetch_byte_inc
+	subb $'0', %al
+	cmpb $9, %al
+	ja 2f
+	call prim_add
+	loop 1b
+	pop %edi
+	pop %ecx
 	_dup
+	mov $-1, %eax
+	ret
+2:
+	pop %edi
+	pop %ecx
+	xor %eax, %eax
 	ret
 
 prim parse_hex
@@ -597,11 +654,13 @@ variable D, end_dict  // dictionary
 variable H, heap      // heap addr
 variable K, 0         // last key read
 variable M, prim_repl // addr of main function
+variable Z, heap      // addr of last instruction compiled
 
 message not_found "Not a dictionary word or number: "
 message number_parse_fail "Invalid number format: "
 message welcome "Cantilever v0.0\n"
 message tried_to_execute_a_literal "Tried to execute a non-function value: "
+message failed_conditional "Conditional code block too long\n"
 
 
 heap:
@@ -613,6 +672,7 @@ entry "", _start
 entry "dict",  prim_D
 entry "here",  prim_H
 entry "main",  prim_M
+entry "prev",  prim_Z
 
 // memory access
 entry "a@",       prim_get_A
@@ -652,6 +712,8 @@ entry "=",        prim_equals
 entry "<",        prim_less_than
 entry ">",        prim_greater_than
 entry "?;",       prim_cond_return
+entry "?[",       prim_if
+entry "]",        prim_endif
 
 // IO
 entry ".",     prim_emit
