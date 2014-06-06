@@ -368,6 +368,16 @@ prim cond_return
 1:
 	ret
 
+prim else
+	// ( a1 -- a2 )
+	_immediate
+	movb $0xeb, (%edi)  // jmp instruction
+	inc %edi
+	_dup
+	mov %edi, %eax
+	_swap
+	inc %edi
+	// fallthrough
 prim endif
 	// ( a -- )
 	_immediate

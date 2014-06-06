@@ -2,7 +2,7 @@ immediate:
 	0x90 ,
 	0xc3' ,#
 
-__;: drop 0xc3 , ;
+;:  immediate#  0xc3 , ;
 
 __@: find apply @ ;
 
