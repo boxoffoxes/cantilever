@@ -149,7 +149,7 @@ prim lookup_word
 	call prim_D      // -- l @D
 	call prim_fetch_from_addr_on_stack // -- l D
 	call prim_set_A  // -- l
-	_dup
+	_dup             // -- l l
 	mov (%eax), %eax // -- l n
 1:
 	// Test first cell
@@ -410,18 +410,19 @@ prim if
 
 prim parse_number
 	// ( l -- n bool )
-	mov 1(%eax), %ebx
+	mov 1(%eax), %ebx     // -- l
 	cmpw $0x7830, %bx       // 0x prefix
 	je prim_parse_hex
 	// no prefix? fall through to base 10
-	_dup
-	movl $10, %eax
+	_dup                  // -- l l
+	movl $10, %eax        // -- l 10
 prim base
 	// ( l n -- n bool )
 	push %ecx
 	push %edi
 	push %ebp
 	mov %eax, %ebp
+	_drop                 // -- l
 	xor %ecx, %ecx
 	movb (%edi), %cl
 	inc %edi   // skip count
@@ -431,7 +432,7 @@ prim base
 	mull %ebx    // %eax * 10
 	call prim_fetch_byte_inc
 	subb $'0', %al
-	cmpb $9, %al
+	cmpb $9, %al     // TODO: won't work for bases larger than 10!
 	ja 2f
 	call prim_add
 	loop 1b
