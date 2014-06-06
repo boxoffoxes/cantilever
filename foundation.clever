@@ -4,10 +4,6 @@ immediate:
 
 ;:  immediate#  0xc3 , ;
 
-__@: find apply @ ;
-
-__!: find apply !  ;
-
 smudge:
 	dict @
 	0x10 - 
@@ -31,6 +27,13 @@ _eol_comment:
 
 -- and single-line comments
 
+-- double-underscore prefixed functions allow us to define new word suffixes
+__@: find apply @ ;
+__!: find apply !  ;
+
+-- double-underscore suffixed functions allow us to define new data prefixes
+-- Currently only number bases are supported
+0b__: 2 base ;  -- Allows us to use literal binary numbers using the following syntax: 0b100 
 
 nl: 0x0a . ;  ( -- )
 

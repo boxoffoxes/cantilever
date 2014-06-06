@@ -414,15 +414,19 @@ prim parse_number
 	cmpw $0x7830, %bx       // 0x prefix
 	je prim_parse_hex
 	// no prefix? fall through to base 10
-prim parse_dec
-	// ( l -- n bool )
+	_dup
+	movl $10, %eax
+prim base
+	// ( l n -- n bool )
 	push %ecx
 	push %edi
+	push %ebp
+	mov %eax, %ebp
 	xor %ecx, %ecx
 	movb (%edi), %cl
 	inc %edi   // skip count
 	xor %eax, %eax
-	mov $10, %ebx
+	mov %ebp, %ebx
 1:
 	mull %ebx    // %eax * 10
 	call prim_fetch_byte_inc
@@ -431,12 +435,14 @@ prim parse_dec
 	ja 2f
 	call prim_add
 	loop 1b
+	pop %ebp
 	pop %edi
 	pop %ecx
 	_dup
 	mov $-1, %eax
 	ret
 2:
+	pop %ebp
 	pop %edi
 	pop %ecx
 	xor %eax, %eax
@@ -536,6 +542,14 @@ prim def
 	add $4, %edi     // --       // unused cell
 	mov %edi, var_D  // --       // save new dictionary address
 	pop %edi
+	ret
+
+prim study_word
+	// ( w -- )
+	call prim_set_A
+	xor %ecx, %ecx
+	movb (%edi), %cl
+	inc %edi
 	ret
 
 prim fetch_byte
@@ -695,10 +709,13 @@ entry "!b",       prim_store_byte
 entry "!b+",      prim_store_byte_inc
 entry "!!",       prim_store_to_addr_on_stack
 
-// word manipulation
+// word suffixes
 entry "__:",        prim_def
 entry "__'",        prim_quote
 entry "__#",        prim_exec
+
+// data prefixes
+entry "0x__",       prim_parse_hex
 
 // stack manipulation
 entry "dup",      prim_dup
@@ -736,6 +753,7 @@ entry "key",      prim_key
 entry "word",     prim_word
 entry "find",     prim_lookup_word
 entry "apply",    prim_apply
+entry "base",     prim_base
 
 // legacy
 entry "$",        prim_data
