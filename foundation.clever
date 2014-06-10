@@ -17,7 +17,7 @@ _comment:
 ; smudge#
 
 
-( now we have comments! )
+( now we have block comments! Yay. )
 
 --:  immediate#
 _eol_comment:

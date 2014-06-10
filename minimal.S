@@ -2,21 +2,44 @@
 
 .section .flat, "awx", @progbits
 
+/* Register allocation
+ * We make heavy use of preprocessor macros to
+ * abstract registers and allow for easier
+ * porting and changing of execution model
+ */
+
+#define ToS   %eax
+#define DSP   %esi
+#define RSP   %esp
+#define Cntr  %ecx
+#define SReg  %edi
+#define Zero  $0
+#define NoS   (%esp)
+#define ToRS  (%esp)
+#define RegA  %ebx
+#define RegB  %edx
+#define RegC  %ebp
+
 .macro _drop
 	lodsl
 .endm
 
 .macro _dup
-	lea -4(%esi), %esi
-	movl %eax, (%esi)
+	lea -4(DSP), DSP
+	movl ToS, NoS
+.endm
+
+.macro _push val
+	_dup
+	movl \val, ToS
 .endm
 
 .macro _nip
-	lea 4(%esi), %esi
+	lea 4(DSP), DSP
 .endm
 
 .macro _swap
-	xchg %eax, (%esi)
+	xchg ToS, NoS
 .endm
 
 // a word is immediate if its first instruction is a nop
