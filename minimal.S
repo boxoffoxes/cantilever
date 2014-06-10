@@ -8,12 +8,18 @@
  * porting and changing of execution model
  */
 
+// the data stack
 #define ToS   %eax
 #define NoS   (%esi)
-#define ToRS  (%esp)
 #define DSP   %esi
+
+// the return stack
+#define ToRS  (%esp)
 #define RSP   %esp
+
+// special purpose registers
 #define Zero  $0
+
 // General purpose registers:
 // RegA is the Address Register, RegC is the string counter
 #define RegA  %edi
@@ -42,6 +48,11 @@
 .macro _push val
 	_dup
 	movl \val, ToS
+.endm
+
+.macro _pop dest
+	mov ToS, \dest
+	_drop
 .endm
 
 .macro _nip
@@ -101,17 +112,17 @@ _start:
 prim key
 	// ( -- b / K )
 	_dup
-	push %ecx
-	_clear %ebx
+	push RegC
+	_clear RegB
 	mov $var_K, %ecx
 	mov %ebx, %edx
 	inc %edx
 	mov $__NR_read, %eax
 	int $0x80
-	test %eax, %eax
+	test ToS, ToS
 	jz prim_bye
-	movzbl var_K, %eax
-	pop %ecx
+	movzbl var_K, ToS
+	pop RegC
 	ret
 
 prim drop_spaces
@@ -127,11 +138,11 @@ prim drop_spaces
 prim word
 	// ( -- l / Kw )   TODO: built-in stack smash here!
 	call prim_drop_spaces
-	push %edi
-	push %ecx
-	xor %ecx, %ecx
-	mov var_H, %edi  // use the heap for our temporary string buffer
-	inc %edi         // leave space for the char count.
+	push RegA
+	push RegC
+	_clear RegC
+	mov var_H, RegA  // use the heap for our temporary string buffer
+	inc RegA         // leave space for the char count.
 0:
 	call prim_store_byte_inc
 	inc RegC
@@ -140,91 +151,91 @@ prim word
 	jbe 1f
 	jmp 0b
 1:
-	xor %eax, %eax        // zero %eax
+	_clear ToS            // zero %eax
 	stosl                 // add 8 bytes of zeroes after word
 	stosl
-	mov var_H, %edi
-	mov %cl, (%edi)       // save character count
-	mov %edi, %eax        // push the label address
-	pop %ecx
-	pop %edi
+	mov var_H, RegA
+	mov %cl, (RegA)       // save character count
+	mov RegA, ToS         // push the label address
+	pop RegC
+	pop RegA
 	ret
 
 prim get_suffix
 	// ( l -- l a )
 	_dup
-	movzbl (%eax), %eax
-	addl (%esi), %eax
-	movb (%eax), %al
-	xor %ebx, %ebx
-	push %ebx
-	shl $24, %eax           // -- 0 0xBB000000
-	addl $0x5f5f03, %eax  // -- 0 3"__b"
-	push %eax
-	movl %esp, %eax
+	movzbl (ToS), ToS
+	addl NoS, ToS
+	movb (ToS), %al
+	_clear RegB
+	push RegB
+	shl $24, ToS            // -- 0 0xBB000000
+	addl $0x5f5f03, ToS     // -- 0 3"__b"
+	push ToS
+	movl RSP, ToS
 	call prim_lookup_word
-	pop %ebx // discard label buffer
-	pop %ebx
+	pop RegB // discard label buffer
+	pop RegB
 	ret
 
 prim strip_suffix
 	// ( l0 -- l1 )
-	xor %ebx, %ebx
-	movb (%eax), %bl
-	decb (%eax)
-	addl %eax, %ebx
-	movb $0, (%ebx)
+	_clear RegB
+	movb (ToS), %bl
+	decb (ToS)
+	addl ToS, RegB
+	movb Zero, (RegB)
 	ret
 
 prim lookup_word
 	// ( l -- a )
-	push %edi
+	push RegA
 	call prim_D      // -- l @D
 	call prim_fetch_from_addr_on_stack // -- l D
 	call prim_set_A  // -- l
 	_dup             // -- l l
-	mov (%eax), %eax // -- l n
+	mov (ToS ), ToS  // -- l n
 1:
 	// Test first cell
-	lea -16(%edi), %edi
+	lea -16(RegA), RegA
 	call prim_fetch  // -- l n n1
-	test %eax, %eax
+	test ToS, ToS 
 	jz 2f
-	cmp (%esi), %eax
+	cmp NoS, ToS 
 	_drop            // -- l n
 	jne 1b
 	// found a match TODO: doesn't check second portion of label yet
-	mov 8(%edi), %eax  // -- l a
+	mov 8(RegA), ToS   // -- l a
 	_nip               // -- a
-	pop %edi
+	pop RegA
 	ret
 2:
-	pop %edi
+	pop RegA
 	_nip             // -- n 0
 	_nip             // -- 0
 	ret
 
 prim eval
 	// ( l -- ?? )
-	mov %eax, %ebp   // store our label address somewhere harmless for future use
+	mov ToS, RegE   // store our label address somewhere harmless for future use
 	call prim_lookup_word  // -- a
-	test %eax, %eax
+	test ToS, ToS
 	jz 1f
-	movb (%eax), %bl
+	movb (ToS), %bl
 	cmpb $0x90, %bl  // immediate words
 	je prim_apply
 	jmp prim_compile_call
 1:
-	mov %ebp, %eax         // -- l
+	mov RegE, ToS          // -- l
 	call prim_parse_number // -- n bool
-	test %eax, %eax
+	test ToS, ToS
 	_drop                  // -- n
 	jz 2f
 	jmp prim_data
 2:
-	mov %ebp, %eax         // -- l
+	mov RegE, ToS          // -- l
 	call prim_get_suffix   // -- l a
-	test %eax, %eax
+	test ToS, ToS
 	jz parse_fail
 	_swap                  // -- a l
 	call prim_strip_suffix // -- a l1
@@ -234,43 +245,42 @@ prim eval
 
 prim compile_call
 	// ( a -- )
-	mov %edi, var_Z  // save addr of last compiled instruction
-	movb $0xe8, (%edi)
-	inc %edi
+	mov RegA, var_Z  // save addr of last compiled instruction
+	movb $0xe8, (RegA)
+	inc RegA
 	_advance_cell RegA
-	sub %edi, %eax
-	mov %eax, -4(%edi)
+	sub RegA, ToS
+	mov ToS, -4(RegA)
 	_drop
-	mov %edi, var_H
+	mov RegA, var_H
 	ret
 
 prim quote
 	// ( l -- an )
-	mov %eax, %ebp    // save string address
+	mov ToS, RegE    // save string address
 	call prim_lookup_word  // -- a
-	test %eax, %eax
+	test ToS, ToS
 	stc  // something that can be tested to determine if we have an address or a number
 	jnz 1f
 	// lookup failed 
-	mov %ebp, %eax
+	mov RegE, ToS
 	call prim_parse_number // -- n bool
-	test %eax, %eax
+	test ToS, ToS
 	jz parse_fail
 	_drop
 1:
 	ret
 
 parse_fail:
-	mov %ebp, %eax
+	mov RegE, ToS
 	_swap
-	mov $msg_not_found, %eax
+	mov $msg_not_found, ToS
 	jmp prim_fail
 
 prim apply
 	// ( a -- )
-	mov %eax, %ebx
-	_drop
-	jmp *%ebx
+	_pop RegB
+	jmp *RegB
 
 prim exec
 	// ( l -- ? )
@@ -278,33 +288,30 @@ prim exec
 	jnc 1f           // carry flag not set - this is a literal, not a function
 	jmp prim_apply
 1:
-	mov %ebp, %eax
-	_dup
-	mov $msg_tried_to_execute_a_literal, %eax
+	mov RegE, ToS
+	_push $msg_tried_to_execute_a_literal
 	jmp prim_fail
 
 prim data
 	// ( n -- )
 	mov %edi, var_Z        // -- save addr of instr
-	_dup                   // -- n n
-	mov $0x89fc768d, %eax  // -- n x    this is _dup in hex. TODO: proper inlining!
+	_push $0x89fc768d      // -- n x    this is _dup in hex. TODO: proper inlining!
 	call prim_store_inc    // -- n
 	_dup                   // -- n n
 	mov $0x06, %al         // -- n xb   last byte of _dup
 	call prim_store_byte_inc // -- n
-	_dup
-	mov $0xb8, %eax          // -- n b   movb instruction
+	_push $0xb8            // -- n b   movb instruction
 	call prim_store_byte_inc // -- n
 	call prim_store_inc      // --
-	mov %edi, var_H
+	mov RegA, var_H
 	ret
 
 prim literal_byte
 	_dup
-	pop %eax           // get our return address
-	inc %eax           // skip the literal value
-	push %eax          // push the new return address
-	movzbl -1(%eax), %eax // fetch the literal we just skipped
+	pop ToS            // get our return address
+	inc ToS            // skip the literal value
+	push ToS           // push the new return address
+	movzbl -1(ToS), ToS // fetch the literal we just skipped
 	ret
 
 prim dup
@@ -324,120 +331,118 @@ prim swap
 	ret
 
 prim push
-	pop %ebx // make sure our return address
-	push %eax
+	pop RegB // make sure our return address
+	push ToS
 	_drop
-	push %ebx // remains on ToRS
+	push RegB // remains on ToRS
 	ret
 
 prim pop
-	pop %ebx // our return address
+	pop RegB // our return address
 	_dup
-	pop %eax
-	push %ebx
+	pop ToS
+	push RegB
 	ret
 
 prim set_A
-	mov %eax, %edi
+	mov ToS, RegA
 	_drop
 	ret
 
 prim get_A
 	_dup
-	mov %edi, %eax
+	mov RegA, ToS
 	ret
 
 prim add
-	addl (%esi), %eax
+	addl NoS, ToS
 	_nip
 	ret
 
 prim subtract
 	_swap
-	subl (%esi), %eax
+	subl NoS, ToS
 	_nip
 	ret
 
 prim inc
-	inc %eax
+	inc ToS
 	ret
 
 prim dec
-	dec %eax
+	dec ToS
 	ret
 
 prim equals
-	cmp (%esi), %eax
+	cmp NoS, ToS
 	jne 1f
-	mov $-1, %eax
+	mov $-1, ToS
 	ret
 1:
-	xor %eax, %eax
+	_clear ToS
 	ret
 
 prim greater_than
-	cmp (%esi), %eax
+	cmp NoS, ToS
 	jle 1f
-	mov $-1, %eax
+	mov $-1, ToS
 	ret
 1:
-	xor %eax, %eax
+	_clear ToS
 	ret
 
 prim less_than
-	cmp (%esi), %eax
+	cmp NoS, ToS
 	jge 1f
-	mov $-1, %eax
+	mov $-1, ToS
 	ret
 1:
-	xor %eax, %eax
+	_clear ToS
 	ret
 
 prim cond_return
-	test %eax, %eax
+	test ToS, ToS
 	_drop
 	jz 1f
-	pop %ebx
+	pop RegB
 1:
 	ret
 
 prim else
 	// ( a1 -- a2 )
 	_immediate
-	movb $0xeb, (%edi)  // jmp instruction
-	inc %edi
+	movb $0xeb, (RegA)  // jmp instruction
+	inc RegA
 	_dup
-	mov %edi, %eax
+	mov RegA, ToS
 	_swap
-	inc %edi
+	inc RegA
 	// fallthrough
 prim endif
 	// ( a -- )
 	_immediate
-	mov %eax, %ebx
-	subl %edi, %ebx
-	not %ebx  // this is one less than %edi-%ebx, which is correct
-	test $0x100, %ebx
+	mov ToS, RegB
+	subl RegA, RegB
+	not RegB  // this is one less than %edi-%ebx, which is correct
+	test $0x100, RegB
 	jnz 1f
-	movb %bl, (%eax)
+	movb %bl, (ToS)
 	_drop
 	ret
 1:
-	mov $msg_failed_conditional, %eax
-	_dup
-	mov $msg_failed_conditional, %eax
+	mov $msg_failed_conditional, ToS
+	_push $msg_failed_conditional
 	jmp prim_fail
 
 prim if
 	// ( -- a )
 	_immediate
-	_dup
-	mov $0x74adc085, %eax // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
+	_push $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
 	stosl
-	mov %edi, %eax   // leave a copy of the target on the stack
-	movb $0, (%edi)    // leave space for the offset
-	inc %edi
-	mov %edi, var_H  // update the free address
+	mov RegA, ToS    // leave a copy of the target on the stack
+	movb Zero, (RegA)    // leave space for the offset
+	inc RegA
+	mov RegA, var_H  // update the free address
 	ret
 
 
@@ -451,16 +456,15 @@ prim parse_number
 	movl $10, %eax        // -- l 10
 prim base
 	// ( l n -- n bool )
-	push %ecx
-	push %edi
-	push %ebp
-	mov %eax, %ebp
-	_drop                 // -- l
-	xor %ecx, %ecx
-	movb (%edi), %cl
-	inc %edi   // skip count
-	xor %eax, %eax
-	mov %ebp, %ebx
+	push RegC
+	push RegA
+	push RegE
+	_pop RegE // -- l
+	_clear RegC
+	movb (RegA), %cl
+	inc RegA   // skip count
+	_clear ToS
+	mov RegE, %ebx
 1:
 	mull %ebx    // %eax * 10
 	call prim_fetch_byte_inc
@@ -469,17 +473,16 @@ prim base
 	ja 2f
 	call prim_add
 	loop 1b
-	pop %ebp
-	pop %edi
-	pop %ecx
-	_dup
-	mov $-1, %eax
+	pop RegE
+	pop RegA
+	pop RegC
+	_push $-1
 	ret
 2:
-	pop %ebp
-	pop %edi
-	pop %ecx
-	xor %eax, %eax
+	pop RegE
+	pop RegA
+	pop RegC
+	_clear ToS
 	ret
 
 prim parse_hex
@@ -490,24 +493,24 @@ prim parse_hex
 	movb (RegA), %cl
 	dec %cl       // skip the
 	dec %cl       // 0x prefix
-	add $3, %edi  // ...
-	xor %eax, %eax
+	add $3, RegA  // ...
+	_clear ToS
 1:
-	shl $4, %eax                       // -- n
+	shl $4, ToS                        // -- n
 	call prim_fetch_byte_inc           // -- n b
 	call prim_parse_hex_digit          // -- n n
 	jnc 3f    // carry not set = failure
 	call prim_add                      // -- n
 	loop 1b
-	pop %edi
-	pop %ecx
+	pop RegA
+	pop RegC
 	_dup
 	mov $-1, %eax
 	ret
 3:
-	pop %edi
-	pop %ecx
-	_clear RegA
+	pop RegA
+	pop RegC
+	_clear ToS
 	ret
 
 
@@ -645,17 +648,17 @@ prim store_to_addr_on_stack
 	ret
 
 prim emit
-	push %ecx
-	push %eax
-	xor %ebx, %ebx
+	push RegC
+	push ToS
+	_clear %ebx
 	inc %ebx
 	mov %esp, %ecx
 	mov %ebx, %edx
 	mov $__NR_write, %eax
 	int $0x80
 	_drop
-	pop %ebx // discard the buffer we created on the rstack
-	pop %ecx
+	pop RegB  // discard the buffer we created on the rstack
+	pop RegC
 	ret
 
 prim repl
