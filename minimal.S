@@ -69,6 +69,7 @@
 .endm
 
 .macro prim label
+.globl prim_\label
 prim_\label:
 .endm
 
@@ -109,6 +110,12 @@ _start:
 	mov var_H, RegA
 	jmp *var_M
 
+
+call_prim_from_c:
+	// TODO: save registers such that cantilever prims can be called from
+	// C. function address expected on stack.
+	ret
+	
 prim key
 	// ( -- b / K )
 	_dup
