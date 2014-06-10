@@ -9,16 +9,26 @@
  */
 
 #define ToS   %eax
+#define NoS   (%esi)
+#define ToRS  (%esp)
 #define DSP   %esi
 #define RSP   %esp
-#define Cntr  %ecx
-#define SReg  %edi
 #define Zero  $0
-#define NoS   (%esp)
-#define ToRS  (%esp)
-#define RegA  %ebx
-#define RegB  %edx
-#define RegC  %ebp
+// General purpose registers:
+// RegA is the Address Register, RegC is the string counter
+#define RegA  %edi
+#define RegB  %ebx
+#define RegC  %ecx
+#define RegD  %edx
+#define RegE  %ebp
+
+.macro _advance_cell reg
+	lea 4(\reg), \reg
+.endm
+
+.macro _clear reg
+	xor \reg, \reg
+.endm
 
 .macro _drop
 	lodsl
@@ -54,7 +64,7 @@ prim_\label:
 .macro variable name, val=0
 prim \name
 	_dup
-	mov $var_\name, %eax
+	mov $var_\name, ToS
 	ret
 .align 4
 var_\name:
@@ -83,16 +93,16 @@ msg_\label:
 .align 4, 0x90
 _start:
 	cld
-	mov %esp, %esi
-	lea -2048(%esp), %esp // use part of call stack for data stack
-	mov var_H, %edi
+	mov %esp, DSP
+	lea -2048(%esp), RSP // use part of call stack for data stack
+	mov var_H, RegA
 	jmp *var_M
 
 prim key
 	// ( -- b / K )
 	_dup
 	push %ecx
-	xor %ebx, %ebx
+	_clear %ebx
 	mov $var_K, %ecx
 	mov %ebx, %edx
 	inc %edx
@@ -124,7 +134,7 @@ prim word
 	inc %edi         // leave space for the char count.
 0:
 	call prim_store_byte_inc
-	inc %ecx
+	inc RegC
 	call prim_key
 	cmp $' ', %al
 	jbe 1f
@@ -227,7 +237,7 @@ prim compile_call
 	mov %edi, var_Z  // save addr of last compiled instruction
 	movb $0xe8, (%edi)
 	inc %edi
-	lea 4(%edi), %edi
+	_advance_cell RegA
 	sub %edi, %eax
 	mov %eax, -4(%edi)
 	_drop
@@ -474,10 +484,10 @@ prim base
 
 prim parse_hex
 	// ( l -- n bool )
-	push %ecx
-	push %edi
-	xor %ecx, %ecx
-	movb (%edi), %cl
+	push RegC
+	push RegA
+	_clear RegC
+	movb (RegA), %cl
 	dec %cl       // skip the
 	dec %cl       // 0x prefix
 	add $3, %edi  // ...
@@ -497,7 +507,7 @@ prim parse_hex
 3:
 	pop %edi
 	pop %ecx
-	xor %eax, %eax
+	_clear RegA
 	ret
 
 
@@ -517,14 +527,14 @@ prim parse_hex_digit
 
 prim extract_hex_digit
 	_dup
-	and $0xf, %eax
-	add $'0', %eax
-	cmp $'9', %eax
+	and $0xf, ToS
+	add $'0', ToS
+	cmp $'9', ToS
 	jbe 1f
-	add $39, %eax
+	add $39, ToS
 1:
 	_swap
-	shr $4, %eax
+	shr $4, ToS
 	ret
 
 prim emit_hex
@@ -550,11 +560,11 @@ prim emit_hex
 
 prim def
 	// ( l -- )  TODO should align to cell boundary with nop.
-	push %edi
+	push RegA
 	_dup
-	mov 4(%eax), %eax // -- id1
+	mov 4(ToS), ToS // -- l id1
 	_swap
-	mov (%eax), %eax // -- id1 id0    // make an identifier
+	mov (ToS), ToS  // -- id1 id0    // make an identifier
 	call prim_D      // -- id1 id0 @d  // get dict address
 	call prim_fetch_from_addr_on_stack // id1 id0 d
 	call prim_set_A  // -- id1 id0    // ...and set A
@@ -563,48 +573,46 @@ prim def
 	call prim_H      // -- @h     // current heap address
 	call prim_fetch_from_addr_on_stack  // -- h
 	call prim_store_inc   // --       // store the code address
-	add $4, %edi     // --       // unused cell
-	mov %edi, var_D  // --       // save new dictionary address
-	pop %edi
+	add $4, RegA     // --       // unused cell
+	mov RegA, var_D  // --       // save new dictionary address
+	pop RegA
 	ret
 
 prim study_word
 	// ( w -- )
 	call prim_set_A
-	xor %ecx, %ecx
-	movb (%edi), %cl
-	inc %edi
+	_clear RegC
+	movb (RegA), %cl
+	inc RegA
 	ret
 
 prim fetch_byte
 	_dup
-	movzbl (%edi), %eax
+	movzbl (RegA), ToS
 	ret
 
 prim fetch_byte_inc
 	_dup
-	movzbl (%edi), %eax
-	inc %edi
+	movzbl (RegA), ToS
+	inc RegA
 	ret
 
 prim fetch
-	_dup
-	movl (%edi), %eax
+	_push (RegA)
 	ret
 
 prim fetch_from_addr_on_stack
 	// ( a -- n )
-	mov (%eax), %eax
+	mov (ToS), ToS
 	ret
 
 prim fetch_inc
-	_dup
-	movl (%edi), %eax
-	lea 4(%edi), %edi
+	_push (RegA)
+	_advance_cell RegA
 	ret
 
 prim store_byte
-	movb %al, (%edi)
+	movb %al, (RegA)
 	_drop
 	ret
 
@@ -615,11 +623,11 @@ prim store_byte_inc
 
 prim store_alloc_byte
 	call prim_store_byte_inc
-	mov %edi, var_H
+	mov RegA, var_H
 	ret
 
 prim store
-	movl %eax, (%edi)
+	movl ToS, (RegA)
 	_drop
 	ret
 
@@ -630,9 +638,9 @@ prim store_inc
 
 prim store_to_addr_on_stack
 	// ( n a -- )	
-	mov (%esi), %ebx
+	movl NoS, RegB
 	_nip
-	mov %ebx, (%eax)
+	mov RegB, (ToS)
 	_drop
 	ret
 
@@ -676,16 +684,14 @@ prim warn
 	// ( id id -- )
 	call prim_emit_id
 	call prim_emit_id
-	_dup
-	mov $'\n', %eax
+	_push $'\n'
 	call prim_emit
 	ret
 
 prim fail
 	// ( id id -- )
 	call prim_warn
-	_dup
-	mov $1, %eax
+	_push $1
 	jmp prim_exit
 
 prim bye
