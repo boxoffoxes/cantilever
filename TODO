@@ -1,0 +1,6 @@
+* Convert primitives to have a single return point, to facilitate inlining and different execution models
+* Split macros and primitives into separate compilation source files
+* Write a test-harness for regression testing
+* Conform to C calling conventions?
+* Work out what to do with prims that jmp rather than ret
+* Cache label in MMX register (also allows trivial 64bit comparison)

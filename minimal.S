@@ -73,11 +73,16 @@
 prim_\label:
 .endm
 
+.macro end
+10001:
+ret
+.endm
+
 .macro variable name, val=0
 prim \name
 	_dup
 	mov $var_\name, ToS
-	ret
+end
 .align 4
 var_\name:
 	.int \val
@@ -130,7 +135,7 @@ prim key
 	jz prim_bye
 	movzbl var_K, ToS
 	pop RegC
-	ret
+end
 
 prim drop_spaces
 	// ( -- b / K )
@@ -140,7 +145,7 @@ prim drop_spaces
 	_drop
 	jmp prim_drop_spaces
 1:
-	ret
+end
 
 prim word
 	// ( -- l / Kw )   TODO: built-in stack smash here!
@@ -166,24 +171,21 @@ prim word
 	mov RegA, ToS         // push the label address
 	pop RegC
 	pop RegA
-	ret
+end
 
 prim get_suffix
 	// ( l -- l a )
-	_dup
-	movzbl (ToS), ToS
-	addl NoS, ToS
-	movb (ToS), %al
-	_clear RegB
-	push RegB
+	_dup                 // -- l l
+	movzbl (ToS), ToS    // -- l n    get str count
+	addl NoS, ToS        // -- l l+n  add addr of string to get last char
+	movzbl (ToS), ToS    // -- l b    get last char
 	shl $24, ToS            // -- 0 0xBB000000
 	addl $0x5f5f03, ToS     // -- 0 3"__b"
 	push ToS
 	movl RSP, ToS
 	call prim_lookup_word
 	pop RegB // discard label buffer
-	pop RegB
-	ret
+end
 
 prim strip_suffix
 	// ( l0 -- l1 )
@@ -192,7 +194,7 @@ prim strip_suffix
 	decb (ToS)
 	addl ToS, RegB
 	movb Zero, (RegB)
-	ret
+end
 
 prim lookup_word
 	// ( l -- a )
@@ -220,7 +222,7 @@ prim lookup_word
 	pop RegA
 	_nip             // -- n 0
 	_nip             // -- 0
-	ret
+end
 
 prim eval
 	// ( l -- ?? )
@@ -260,7 +262,7 @@ prim compile_call
 	mov ToS, -4(RegA)
 	_drop
 	mov RegA, var_H
-	ret
+end
 
 prim quote
 	// ( l -- an )
@@ -276,7 +278,7 @@ prim quote
 	jz parse_fail
 	_drop
 1:
-	ret
+end
 
 parse_fail:
 	mov RegE, ToS
@@ -311,7 +313,7 @@ prim data
 	call prim_store_byte_inc // -- n
 	call prim_store_inc      // --
 	mov RegA, var_H
-	ret
+end
 
 prim literal_byte
 	_dup
@@ -319,75 +321,76 @@ prim literal_byte
 	inc ToS            // skip the literal value
 	push ToS           // push the new return address
 	movzbl -1(ToS), ToS // fetch the literal we just skipped
-	ret
+end
 
 prim dup
 	_dup
-	ret
+end
 
 prim drop
 	_drop
-	ret
+end
 
 prim nip
 	_nip
-	ret
+end
 
 prim swap
 	_swap
-	ret
+end
 
 prim push
 	pop RegB // make sure our return address
 	push ToS
 	_drop
 	push RegB // remains on ToRS
-	ret
+end
 
 prim pop
 	pop RegB // our return address
 	_dup
 	pop ToS
 	push RegB
-	ret
+end
 
 prim set_A
 	mov ToS, RegA
 	_drop
-	ret
+end
 
 prim get_A
 	_dup
 	mov RegA, ToS
-	ret
+end
 
 prim add
 	addl NoS, ToS
 	_nip
-	ret
+end
 
 prim subtract
 	_swap
 	subl NoS, ToS
 	_nip
-	ret
+end
 
 prim inc
 	inc ToS
-	ret
+end
 
 prim dec
 	dec ToS
-	ret
+end
 
 prim equals
+	// ( n n -- n bool )
 	cmp NoS, ToS
 	jne 1f
 	mov $-1, ToS
 	ret
 1:
 	_clear ToS
-	ret
+end
 
 prim greater_than
 	cmp NoS, ToS
@@ -396,7 +399,7 @@ prim greater_than
 	ret
 1:
 	_clear ToS
-	ret
+end
 
 prim less_than
 	cmp NoS, ToS
@@ -405,7 +408,7 @@ prim less_than
 	ret
 1:
 	_clear ToS
-	ret
+end
 
 prim cond_return
 	test ToS, ToS
@@ -413,7 +416,7 @@ prim cond_return
 	jz 1f
 	pop RegB
 1:
-	ret
+end
 
 prim else
 	// ( a1 -- a2 )
@@ -450,7 +453,7 @@ prim if
 	movb Zero, (RegA)    // leave space for the offset
 	inc RegA
 	mov RegA, var_H  // update the free address
-	ret
+end
 
 
 prim parse_number
@@ -490,7 +493,7 @@ prim base
 	pop RegA
 	pop RegC
 	_clear ToS
-	ret
+end
 
 prim parse_hex
 	// ( l -- n bool )
@@ -518,7 +521,7 @@ prim parse_hex
 	pop RegA
 	pop RegC
 	_clear ToS
-	ret
+end
 
 
 prim parse_hex_digit
@@ -533,7 +536,7 @@ prim parse_hex_digit
 	ret
 1:
 	stc  // indicate success
-	ret
+end
 
 prim extract_hex_digit
 	_dup
@@ -545,7 +548,7 @@ prim extract_hex_digit
 1:
 	_swap
 	shr $4, ToS
-	ret
+end
 
 prim emit_hex
 	push %ecx
@@ -566,7 +569,7 @@ prim emit_hex
 	call prim_emit
 	loop 2b
 	pop %ecx
-	ret
+end
 
 prim def
 	// ( l -- )  TODO should align to cell boundary with nop.
@@ -586,7 +589,7 @@ prim def
 	add $4, RegA     // --       // unused cell
 	mov RegA, var_D  // --       // save new dictionary address
 	pop RegA
-	ret
+end
 
 prim study_word
 	// ( w -- )
@@ -594,57 +597,57 @@ prim study_word
 	_clear RegC
 	movb (RegA), %cl
 	inc RegA
-	ret
+end
 
 prim fetch_byte
 	_dup
 	movzbl (RegA), ToS
-	ret
+end
 
 prim fetch_byte_inc
 	_dup
 	movzbl (RegA), ToS
 	inc RegA
-	ret
+end
 
 prim fetch
 	_push (RegA)
-	ret
+end
 
 prim fetch_from_addr_on_stack
 	// ( a -- n )
 	mov (ToS), ToS
-	ret
+end
 
 prim fetch_inc
 	_push (RegA)
 	_advance_cell RegA
-	ret
+end
 
 prim store_byte
 	movb %al, (RegA)
 	_drop
-	ret
+end
 
 prim store_byte_inc
 	stosb
 	_drop
-	ret
+end
 
 prim store_alloc_byte
 	call prim_store_byte_inc
 	mov RegA, var_H
-	ret
+end
 
 prim store
 	movl ToS, (RegA)
 	_drop
-	ret
+end
 
 prim store_inc
 	stosl
 	_drop
-	ret
+end
 
 prim store_to_addr_on_stack
 	// ( n a -- )	
@@ -652,7 +655,7 @@ prim store_to_addr_on_stack
 	_nip
 	mov RegB, (ToS)
 	_drop
-	ret
+end
 
 prim emit
 	push RegC
@@ -666,7 +669,7 @@ prim emit
 	_drop
 	pop RegB  // discard the buffer we created on the rstack
 	pop RegC
-	ret
+end
 
 prim repl
 	call prim_word
@@ -688,7 +691,7 @@ prim emit_id
 	pop %edi
 	pop %ecx
 	_drop
-	ret
+end
 
 prim warn
 	// ( id id -- )
@@ -696,7 +699,7 @@ prim warn
 	call prim_emit_id
 	_push $'\n'
 	call prim_emit
-	ret
+end
 
 prim fail
 	// ( id id -- )
