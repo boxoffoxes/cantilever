@@ -22,6 +22,7 @@
 
 // General purpose registers:
 // RegA is the Address Register, RegC is the string counter
+// All of these are caller-saved!
 #define RegA  %edi
 #define RegB  %ebx
 #define RegC  %ecx
@@ -116,11 +117,30 @@ _start:
 	jmp *var_M
 
 
+/* cdecl calling convention register preservation rules
+ * caller-saved:
+ 		%eax, %ecx, %edx
+ * all other registers are callee-saved:
+
+This means that any wrapper for calling C functions
+needs to preserve %eax
+ */
 call_prim_from_c:
 	// TODO: save registers such that cantilever prims can be called from
 	// C. function address expected on stack.
 	ret
 	
+/* state diagram explanation
+    ( x -- y  / abcdeimrv )
+	x -- y is the data stack effect
+	Letters after the slash indicate what side effects result:
+		abcde: These are the virtual GP registers RegA to RegE
+		m: write to main memory
+		i: system calls
+		r: non call/ret return stack manipulation 
+		v: write to variable
+*/
+
 prim key
 	// ( -- b / K )
 	_dup
