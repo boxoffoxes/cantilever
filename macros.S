@@ -18,12 +18,18 @@
 
 // General purpose registers:
 // RegA is the Address Register, RegC is the string counter
-// All of these are caller-saved!
 #define RegA  %edi
 #define RegB  %ebx
 #define RegC  %ecx
 #define RegD  %edx
 #define RegE  %ebp
+
+// Thoughts on register saving:
+//
+// With threaded code it is non-trivial for non-primitives to 
+// save registers when ideally the execution model is a stack
+// machine, so the existence of CPU registers should really be
+// hidden.
 
 .macro _advance_cell reg
 	lea 4(\reg), \reg

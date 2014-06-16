@@ -41,17 +41,17 @@ call_prim_from_c:
 prim key
 	// ( -- b / K )
 	_dup
-	push RegC
-	_clear RegB
+	push %ecx
+	_clear %ebx
 	mov $var_K, %ecx
 	mov %ebx, %edx
 	inc %edx
 	mov $__NR_read, %eax
 	int $0x80
-	test ToS, ToS
+	test %eax, %eax
 	jz prim_bye
 	movzbl var_K, ToS
-	pop RegC
+	pop %ecx
 end
 
 prim drop_spaces
@@ -134,7 +134,7 @@ prim lookup_word
 	mov 8(RegA), ToS   // -- l a
 	_nip               // -- a
 	pop RegA
-	ret
+	jmp 10001f
 2:
 	pop RegA
 	_nip             // -- n 0
@@ -304,7 +304,7 @@ prim equals
 	cmp NoS, ToS
 	jne 1f
 	mov $-1, ToS
-	ret
+	jmp 10001f
 1:
 	_clear ToS
 end
@@ -313,7 +313,7 @@ prim greater_than
 	cmp NoS, ToS
 	jle 1f
 	mov $-1, ToS
-	ret
+	jmp 10001f
 1:
 	_clear ToS
 end
@@ -322,7 +322,7 @@ prim less_than
 	cmp NoS, ToS
 	jge 1f
 	mov $-1, ToS
-	ret
+	jmp 10001f
 1:
 	_clear ToS
 end
@@ -338,28 +338,27 @@ end
 prim else
 	// ( a1 -- a2 )
 	_immediate
-	movb $0xeb, (RegA)  // jmp instruction
-	inc RegA
-	_dup
-	mov RegA, ToS
-	_swap
-	inc RegA
+	movb $0xeb, (RegA)  // write a jmp instruction
+	inc RegA            // and increment RegA
+	_push RegA          // push RegA onto stack
+	_swap               // bring addr saved by if to top
+	inc RegA            // leave a byte for the jump addr
 	// fallthrough
 prim endif
 	// ( a -- )
 	_immediate
-	mov ToS, RegB
-	subl RegA, RegB
-	not RegB  // this is one less than %edi-%ebx, which is correct
-	test $0x100, RegB
-	jnz 1f
-	movb %bl, (ToS)
-	_drop
-	ret
-1:
+	mov ToS, RegB       // 
+	subl RegA, RegB     // calculate relative address
+	not RegB            // this is one less than %edi-%ebx, which should be correct
+	test $0x100, RegB   // TODO: what's this doing?!
+	jz 1f
 	mov $msg_failed_conditional, ToS
 	_push $msg_failed_conditional
 	jmp prim_fail
+1:
+	movb %bl, (ToS)
+	_drop
+end
 
 prim if
 	// ( -- a )
@@ -400,16 +399,14 @@ prim base
 	ja 2f
 	call prim_add
 	loop 1b
-	pop RegE
-	pop RegA
-	pop RegC
 	_push $-1
-	ret
+	jmp 3f
 2:
+	_clear ToS
+3:
 	pop RegE
 	pop RegA
 	pop RegC
-	_clear ToS
 end
 
 prim parse_hex
@@ -433,7 +430,7 @@ prim parse_hex
 	pop RegC
 	_dup
 	mov $-1, %eax
-	ret
+	jmp 10001f
 3:
 	pop RegA
 	pop RegC
@@ -450,7 +447,7 @@ prim parse_hex_digit
 	cmpb $15, %al
 	jbe 1f
 	clc  // indicate failure
-	ret
+	jmp 10001f
 1:
 	stc  // indicate success
 end
@@ -575,17 +572,20 @@ prim store_to_addr_on_stack
 end
 
 prim emit
-	push RegC
-	push ToS
+	// uses real register names rather than macros because
+	// register usage of this function is OS defined and 
+	// will not change with different threading models
+	push %ecx
+	push ToS  // ...except here!
 	_clear %ebx
 	inc %ebx
-	mov %esp, %ecx
+	mov %esp, %ecx   // we just pushed the char we wish to print, so our buffer is on the rstack
 	mov %ebx, %edx
 	mov $__NR_write, %eax
 	int $0x80
 	_drop
-	pop RegB  // discard the buffer we created on the rstack
-	pop RegC
+	pop %ecx  // discard the buffer we created on the rstack
+	pop %ecx
 end
 
 prim repl
@@ -698,8 +698,9 @@ entry "=",        prim_equals
 entry "<",        prim_less_than
 entry ">",        prim_greater_than
 entry "?;",       prim_cond_return
-entry "?[",       prim_if
-entry "]",        prim_endif
+entry "if",       prim_if
+entry "else",     prim_else
+entry "endif",    prim_endif
 
 // IO
 entry ".",     prim_emit
