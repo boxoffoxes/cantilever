@@ -49,7 +49,7 @@ prim key
 	mov $__NR_read, %eax
 	int $0x80
 	test %eax, %eax
-	jz prim_bye
+	jz prim_bye       // TODO: not PIC
 	movzbl var_K, ToS
 	pop %ecx
 end
@@ -205,7 +205,7 @@ parse_fail:
 
 prim apply
 	// ( a -- )
-	_pop RegB
+	_popds RegB
 	jmp *RegB
 
 prim exec
@@ -215,18 +215,18 @@ prim exec
 	jmp prim_apply
 1:
 	mov RegE, ToS
-	_push $msg_tried_to_execute_a_literal
+	_pushds $msg_tried_to_execute_a_literal
 	jmp prim_fail
 
 prim data
 	// ( n -- )
 	mov %edi, var_Z        // -- save addr of instr
-	_push $0x89fc768d      // -- n x    this is _dup in hex. TODO: proper inlining!
+	_pushds $0x89fc768d      // -- n x    this is _dup in hex. TODO: proper inlining!
 	call prim_store_inc    // -- n
 	_dup                   // -- n n
 	mov $0x06, %al         // -- n xb   last byte of _dup
 	call prim_store_byte_inc // -- n
-	_push $0xb8            // -- n b   movb instruction
+	_pushds $0xb8            // -- n b   movb instruction
 	call prim_store_byte_inc // -- n
 	call prim_store_inc      // --
 	mov RegA, var_H
@@ -340,7 +340,7 @@ prim else
 	_immediate
 	movb $0xeb, (RegA)  // write a jmp instruction
 	inc RegA            // and increment RegA
-	_push RegA          // push RegA onto stack
+	_pushds RegA          // push RegA onto stack
 	_swap               // bring addr saved by if to top
 	inc RegA            // leave a byte for the jump addr
 	// fallthrough
@@ -353,7 +353,7 @@ prim endif
 	test $0x100, RegB   // TODO: what's this doing?!
 	jz 1f
 	mov $msg_failed_conditional, ToS
-	_push $msg_failed_conditional
+	_pushds $msg_failed_conditional
 	jmp prim_fail
 1:
 	movb %bl, (ToS)
@@ -363,7 +363,7 @@ end
 prim if
 	// ( -- a )
 	_immediate
-	_push $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
+	_pushds $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
 	stosl
 	mov RegA, ToS    // leave a copy of the target on the stack
 	movb Zero, (RegA)    // leave space for the offset
@@ -385,7 +385,7 @@ prim base
 	push RegC
 	push RegA
 	push RegE
-	_pop RegE // -- l
+	_popds RegE // -- l
 	_clear RegC
 	movb (RegA), %cl
 	inc RegA   // skip count
@@ -399,7 +399,7 @@ prim base
 	ja 2f
 	call prim_add
 	loop 1b
-	_push $-1
+	_pushds $-1
 	jmp 3f
 2:
 	_clear ToS
@@ -525,7 +525,7 @@ prim fetch_byte_inc
 end
 
 prim fetch
-	_push (RegA)
+	_pushds (RegA)
 end
 
 prim fetch_from_addr_on_stack
@@ -534,7 +534,7 @@ prim fetch_from_addr_on_stack
 end
 
 prim fetch_inc
-	_push (RegA)
+	_pushds (RegA)
 	_advance_cell RegA
 end
 
@@ -614,14 +614,14 @@ prim warn
 	// ( id id -- )
 	call prim_emit_id
 	call prim_emit_id
-	_push $'\n'
+	_pushds $'\n'
 	call prim_emit
 end
 
 prim fail
 	// ( id id -- )
 	call prim_warn
-	_push $1
+	_pushds $1
 	jmp prim_exit
 
 prim bye

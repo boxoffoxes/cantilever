@@ -48,12 +48,12 @@
 	movl ToS, NoS
 .endm
 
-.macro _push val
+.macro _pushds val
 	_dup
 	movl \val, ToS
 .endm
 
-.macro _pop dest
+.macro _popds dest
 	mov ToS, \dest
 	_drop
 .endm
@@ -71,7 +71,7 @@
 	nop
 .endm
 
-.macro prim label
+.macro prim label, word="\label", in=0, out=0, side=0, inline="prim_\label", len=(10001f - prim_\label)
 .globl prim_\label
 prim_\label:
 .endm
