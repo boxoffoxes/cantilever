@@ -240,100 +240,9 @@ prim literal_byte
 	movzbl -1(ToS), ToS // fetch the literal we just skipped
 end
 
-prim dup
-	_dup
-end
 
-prim drop
-	_drop
-end
+#include "primitives.S"
 
-prim nip
-	_nip
-end
-
-prim swap
-	_swap
-end
-
-prim push
-	pop RegB // make sure our return address
-	push ToS
-	_drop
-	push RegB // remains on ToRS
-end
-
-prim pop
-	pop RegB // our return address
-	_dup
-	pop ToS
-	push RegB
-end
-
-prim set_A
-	mov ToS, RegA
-	_drop
-end
-
-prim get_A
-	_dup
-	mov RegA, ToS
-end
-
-prim add
-	addl NoS, ToS
-	_nip
-end
-
-prim subtract
-	_swap
-	subl NoS, ToS
-	_nip
-end
-
-prim inc
-	inc ToS
-end
-
-prim dec
-	dec ToS
-end
-
-prim equals
-	// ( n n -- n bool )
-	cmp NoS, ToS
-	jne 1f
-	mov $-1, ToS
-	jmp 10001f
-1:
-	_clear ToS
-end
-
-prim greater_than
-	cmp NoS, ToS
-	jle 1f
-	mov $-1, ToS
-	jmp 10001f
-1:
-	_clear ToS
-end
-
-prim less_than
-	cmp NoS, ToS
-	jge 1f
-	mov $-1, ToS
-	jmp 10001f
-1:
-	_clear ToS
-end
-
-prim cond_return
-	test ToS, ToS
-	_drop
-	jz 1f
-	pop RegB
-1:
-end
 
 prim else
 	// ( a1 -- a2 )
@@ -360,7 +269,7 @@ prim endif
 	_drop
 end
 
-prim if
+prim compile_if
 	// ( -- a )
 	_immediate
 	_pushds $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
@@ -503,14 +412,6 @@ prim def
 	add $4, RegA     // --       // unused cell
 	mov RegA, var_D  // --       // save new dictionary address
 	pop RegA
-end
-
-prim study_word
-	// ( w -- )
-	call prim_set_A
-	_clear RegC
-	movb (RegA), %cl
-	inc RegA
 end
 
 prim fetch_byte

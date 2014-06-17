@@ -6,6 +6,7 @@
 
 // the data stack
 #define ToS   %eax
+#define ToSl  %al
 #define NoS   (%esi)
 #define DSP   %esi
 
