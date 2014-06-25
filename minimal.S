@@ -22,11 +22,6 @@ _start:
 This means that any wrapper for calling C functions
 needs to preserve %eax
  */
-call_prim_from_c:
-	// TODO: save registers such that cantilever prims can be called from
-	// C. function address expected on stack.
-	ret
-	
 /* state diagram explanation
     ( x -- y  / abcdeimrv )
 	x -- y is the data stack effect
@@ -117,13 +112,14 @@ prim lookup_word
 	// ( l -- a )
 	push RegA
 	call prim_D      // -- l @D
-	call prim_fetch_from_addr_on_stack // -- l D
+	call prim_fetch  // -- l D
 	call prim_set_A  // -- l
 	_dup             // -- l l
-	mov (ToS ), ToS  // -- l n
+	mov (ToS), ToS  // -- l n
 1:
 	// Test first cell
 	lea -16(RegA), RegA
+	_pushds RegA     // -- l n a
 	call prim_fetch  // -- l n n1
 	test ToS, ToS 
 	jz 2f
@@ -244,28 +240,29 @@ end
 #include "primitives.S"
 
 
-prim else
+prim compile_else
 	// ( a1 -- a2 )
 	_immediate
 	movb $0xeb, (RegA)  // write a jmp instruction
 	inc RegA            // and increment RegA
 	_pushds RegA          // push RegA onto stack
-	_swap               // bring addr saved by if to top
+	_swap               // bring addr saved by compile_if to top
 	inc RegA            // leave a byte for the jump addr
 	// fallthrough
-prim endif
+prim compile_endif
 	// ( a -- )
 	_immediate
 	mov ToS, RegB       // 
 	subl RegA, RegB     // calculate relative address
 	not RegB            // this is one less than %edi-%ebx, which should be correct
-	test $0x100, RegB   // TODO: what's this doing?!
+	test $0x100, RegB   // TODO: what's this doing?! Testing if jmp is too far?
 	jz 1f
 	mov $msg_failed_conditional, ToS
 	_pushds $msg_failed_conditional
 	jmp prim_fail
 1:
 	movb %bl, (ToS)
+	mov RegA, var_H
 	_drop
 end
 
@@ -402,19 +399,19 @@ prim def
 	_swap
 	mov (ToS), ToS  // -- id1 id0    // make an identifier
 	call prim_D      // -- id1 id0 @d  // get dict address
-	call prim_fetch_from_addr_on_stack // id1 id0 d
+	call prim_fetch  // id1 id0 d
 	call prim_set_A  // -- id1 id0    // ...and set A
 	call prim_store_inc   // -- id0 
 	call prim_store_inc   // -- 
 	call prim_H      // -- @h     // current heap address
-	call prim_fetch_from_addr_on_stack  // -- h
+	call prim_fetch  // -- h
 	call prim_store_inc   // --       // store the code address
 	add $4, RegA     // --       // unused cell
 	mov RegA, var_D  // --       // save new dictionary address
 	pop RegA
 end
 
-prim fetch_byte
+/*prim fetch_byte
 	_dup
 	movzbl (RegA), ToS
 end
@@ -447,14 +444,14 @@ end
 prim store_byte_inc
 	stosb
 	_drop
-end
+end */
 
 prim store_alloc_byte
 	call prim_store_byte_inc
 	mov RegA, var_H
 end
 
-prim store
+/* prim store
 	movl ToS, (RegA)
 	_drop
 end
@@ -471,7 +468,7 @@ prim store_to_addr_on_stack
 	mov RegB, (ToS)
 	_drop
 end
-
+*/
 prim emit
 	// uses real register names rather than macros because
 	// register usage of this function is OS defined and 
@@ -561,14 +558,14 @@ entry "prev",  prim_Z
 // memory access
 entry "a@",       prim_get_A
 entry "a!",       prim_set_A
-//entry "@",        prim_fetch
-entry "@",       prim_fetch_from_addr_on_stack
+entry "@",        prim_fetch
+entry "@+",       prim_fetch_inc
 entry "@b",       prim_fetch_byte
+entry "@b+"       prim_fetch_byte_inc
 entry "!",        prim_store
 entry "!+",       prim_store_inc
 entry "!b",       prim_store_byte
 entry "!b+",      prim_store_byte_inc
-entry "!!",       prim_store_to_addr_on_stack
 
 // word suffixes
 entry "__:",        prim_def
@@ -599,9 +596,9 @@ entry "=",        prim_equals
 entry "<",        prim_less_than
 entry ">",        prim_greater_than
 entry "?;",       prim_cond_return
-entry "if",       prim_if
-entry "else",     prim_else
-entry "endif",    prim_endif
+entry "if",       prim_compile_if
+entry "else",     prim_compile_else
+entry "endif",    prim_compile_endif
 
 // IO
 entry ".",     prim_emit

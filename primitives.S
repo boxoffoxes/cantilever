@@ -78,26 +78,32 @@ end
 
 prim equals
 	// ( n n -- n bool )
-	cmp NoS, ToS
+	cmp ToS, NoS
 	setne ToSl    // Set %al to 1 if not equal, 0 otherwise
+	and $0xff, ToS // make sure all high bits are unset
 	dec ToS      // ToS now -1 if equal or 0 if not. No jump required!
 end
 
 prim greater_than
-	cmp NoS, ToS
+	// ( n n -- n bool )
+	cmp ToS, NoS
 	setle ToSl
+	and $0xff, ToS
 	dec ToS
 end
 
 prim less_than
-	cmp NoS, ToS
+	// ( n n -- n bool )
+	cmp ToS, NoS
 	setge ToSl
+	and $0xff, ToS
 	dec ToS
 end
 
 /* Flow control */
 
 prim cond_return  // TODO: not inlinable
+	// ( bool -- )
 	test ToS, ToS
 	_drop
 	jz 1f
@@ -122,15 +128,48 @@ end
 prim jump // TODO: not inlinable
 	// ( -- )
 	// unconditional jump
-	pop %eax
-	push (%eax)
+	pop RegB
+	push (RegB)
 end
 
 /* memory access */
 
+prim fetch_byte
+	// ( a -- b )
+	movzbl (ToS), ToS
+end
+
+prim fetch_byte_inc
+	// ( -- b )
+	_dup
+	movzbl (RegA), ToS
+	inc RegA
+end
+
 prim fetch 
 	// ( a -- n )
 	mov (ToS), ToS
+end
+
+prim fetch_inc
+	// ( -- n )
+	_dup
+	mov (RegA), ToS
+	addl $4, RegA
+end
+
+prim store_byte
+	// ( b a -- )
+	mov NoS, RegB
+	_nip
+	movb RegBl, (ToS)
+	_drop
+end
+
+prim store_byte_inc
+	// ( b -- )
+	stosb  // TODO: Relies on RegA being %edi
+	_drop
 end
 
 prim store
@@ -140,4 +179,12 @@ prim store
 	mov RegB, (ToS)
 	_drop
 end
+
+prim store_inc
+	// ( n -- )
+	stosl  // TODO: Relies on RegA in %edi
+	_drop
+end
+
+/* IO primitives */
 

@@ -5,9 +5,16 @@ immediate:
 ;:  immediate#  0xc3 , ;
 
 smudge:
+hide:
 	dict @
 	0x10 - 
-	dict !!
+	dict !
+;
+
+unhide:
+	dict @
+	0x10 +
+	dict !
 ;
 
 (: immediate#
@@ -16,8 +23,14 @@ _comment:
 	_comment ;
 ; smudge#
 
-
 ( now we have block comments! Yay. )
+
+( notes on above words:
+	smudge: removes the most recently defined word from the dictionary
+	hide:   does the same, but reversible. Current implementation means
+		these are effectively the same, but that may change.
+	unhide: undoes hide. hide and unhide can be used to let a new function
+		call a previous function with the same name. )
 
 --:  immediate#
 _eol_comment:
@@ -36,6 +49,8 @@ __!: find apply !  ;
 0b__: 2 base ;  -- Allows us to use literal binary numbers using the following syntax: 0b100 
 
 nl: 0x0a . ;  ( -- )
+spc: 32 . ;
+tab: 9 . ;
 
 
 -- vim:ft=cantilever

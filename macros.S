@@ -21,6 +21,7 @@
 // RegA is the Address Register, RegC is the string counter
 #define RegA  %edi
 #define RegB  %ebx
+#define RegBl %bl
 #define RegC  %ecx
 #define RegD  %edx
 #define RegE  %ebp
@@ -72,7 +73,7 @@
 	nop
 .endm
 
-.macro prim label, word="\label", in=0, out=0, side=0, inline="prim_\label", len=(10001f - prim_\label)
+.macro prim label
 .globl prim_\label
 prim_\label:
 .endm
@@ -100,12 +101,12 @@ msg_\label:
 2:
 .endm
 
-.macro entry key, addr
+.macro entry key, addr, in=0, out=0, se=0, ioff=0, ilen=0
 .byte  2f - 1f
 1:
 .ascii "\key"
 2:
 .align 8, 0
 .int \addr
-.int 0
+.byte \in-\out, \ioff, \ilen, 0
 .endm

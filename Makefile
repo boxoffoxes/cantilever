@@ -1,7 +1,15 @@
 tmp=tmp
+SRC=primitives.S minimal.S macros.S
+
 
 #slides.tex : slides.txt
 #	pandoc -t beamer -o $@ -s --bibliography ../bibliography.bib $<
+
+cantilever : ${SRC}
+	gcc -m32 -g -nostdlib -static -Wl,--build-id=none -Wa,-n -o $@ minimal.S
+
+%.o : %.S macros.S
+	gcc -m32 -g -nostdlib -static -Wl,--build-id=none -Wa,-n -c -o $@ $<
 
 # Temporary target for testing executable is not changed by introduction
 # of macros for register names
