@@ -11,15 +11,15 @@
 " syn match isWord   /\S*/
 "syn match isQuote  /'\s\+\S\+/
 "syn match isImmed  /#\s*\S\+/
-"syn match isImmed  /if\|endif\|;/
+syn match isImmed  /if\|else\|endif\|;/
 "syn match isDefn   /:\s\+\S\+/ " contains=isTag
 
 syn match isTag    /['#:]/ contained
 
 syn region String  start="\"" end="\""
 syn region String  start="s: " end="\n"
-syn region Comment start="(" end=")"
-syn region Comment start="--" end="\n"
+syn region Comment start="(\s" end=")"
+syn region Comment start="--\s" end="\n"
 " syn region String  start="\"\n" end="\""
 " syn region String  start="\"\t" end="\""
 

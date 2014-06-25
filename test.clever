@@ -1,0 +1,35 @@
+'.': 0x2e ;
+'!': 0x21 ;
+pass: '.' . ;
+fail: '!' . ;
+test:
+	if pass else fail endif ;
+
+begin_tests:
+	begin_tests' ;
+
+run_tests:
+	0x54 . 0x65 . 0x73 . 0x74 . 0x73 . 0x3a . spc
+test_gt:
+	0xffff 1 > test
+test_lt: 
+	1 0xffff < test
+test_eq:
+	1 1 = test 
+	0 0 = test
+test_dup:
+	0xffffffff dup = test
+test_inc:
+	0xffffffff 1+ 0 = test
+test_dec:
+	0 1- 0xffffffff = test
+	
+
+
+end_tests:
+	nl ;
+
+
+run_tests#
+
+-- vim:ft=cantilever
