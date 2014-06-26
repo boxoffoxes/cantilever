@@ -33,7 +33,7 @@ needs to preserve %eax
 		v: write to variable
 */
 
-prim key
+prim key // TODO: buffered IO
 	// ( -- b / K )
 	_dup
 	push %ecx
@@ -167,7 +167,7 @@ prim eval
 
 prim compile_call
 	// ( a -- )
-	mov RegA, var_Z  // save addr of last compiled instruction
+	_update_Z        // save addr of last compiled instruction
 	movb $0xe8, (RegA)
 	inc RegA
 	_advance_cell RegA
@@ -193,6 +193,12 @@ prim quote
 1:
 end
 
+prim compile_quote
+	_update_Z
+	call prim_quote
+	call prim_data
+end
+
 parse_fail:
 	mov RegE, ToS
 	_swap
@@ -211,12 +217,18 @@ prim exec
 	jmp prim_apply
 1:
 	mov RegE, ToS
+	call prim_parse_number
+	test ToS, ToS
+	jz parse_fail
+	_drop
+end
+	/* mov RegE, ToS
 	_pushds $msg_tried_to_execute_a_literal
-	jmp prim_fail
+	jmp prim_fail */
 
 prim data
 	// ( n -- )
-	mov %edi, var_Z        // -- save addr of instr
+	_update_Z              // -- save addr of instr
 	_pushds $0x89fc768d      // -- n x    this is _dup in hex. TODO: proper inlining!
 	call prim_store_inc    // -- n
 	_dup                   // -- n n
@@ -228,9 +240,19 @@ prim data
 	mov RegA, var_H
 end
 
+prim word_literal
+	// ( -- w )
+	_update_Z
+	_dup
+	mov ToRS, ToS    // fetch our return address (where string is stored)
+	mov (ToS), RegC  // fetch count
+	add RegC, ToRS   // update our return address by string length..
+	incl ToRS         // ...plus one for the length count.
+end
+
 prim literal_byte
 	_dup
-	pop ToS            // get our return address
+	pop ToS            // get our return address onto ToS
 	inc ToS            // skip the literal value
 	push ToS           // push the new return address
 	movzbl -1(ToS), ToS // fetch the literal we just skipped
@@ -252,6 +274,7 @@ prim compile_else
 prim compile_endif
 	// ( a -- )
 	_immediate
+	_update_Z
 	mov ToS, RegB       // 
 	subl RegA, RegB     // calculate relative address
 	not RegB            // this is one less than %edi-%ebx, which should be correct
@@ -269,6 +292,7 @@ end
 prim compile_if
 	// ( -- a )
 	_immediate
+	_update_Z
 	_pushds $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
 	stosl
 	mov RegA, ToS    // leave a copy of the target on the stack
@@ -569,7 +593,7 @@ entry "!b+",      prim_store_byte_inc
 
 // word suffixes
 entry "__:",        prim_def
-entry "__'",        prim_quote
+entry "__'",        prim_compile_quote
 entry "__#",        prim_exec
 
 // data prefixes
@@ -604,6 +628,10 @@ entry "endif",    prim_compile_endif
 entry ".",     prim_emit
 entry ".h",    prim_emit_hex
 entry ".id",   prim_emit_id
+
+// Literal data
+entry "_"     prim_compile_call
+entry "_w"     prim_word_literal
 
 // Misc
 entry "bye",      prim_bye

@@ -1,15 +1,15 @@
-'.': 0x2e ;
-'!': 0x21 ;
 pass: '.' . ;
 fail: '!' . ;
 test:
-	if pass else fail endif ;
+	if pass else fail pop drop endif ;
 
 begin_tests:
 	begin_tests' ;
 
 run_tests:
 	0x54 . 0x65 . 0x73 . 0x74 . 0x73 . 0x3a . spc
+
+( tests )
 test_gt:
 	0xffff 1 > test
 test_lt: 

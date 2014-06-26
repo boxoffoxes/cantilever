@@ -33,6 +33,10 @@
 // machine, so the existence of CPU registers should really be
 // hidden.
 
+.macro _update_Z
+	mov RegA, var_Z
+.endm
+
 .macro _advance_cell reg
 	lea 4(\reg), \reg
 .endm

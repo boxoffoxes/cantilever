@@ -1,8 +1,11 @@
 immediate:
 	0x90 ,
-	0xc3' ,#
+	0xc3# ,#
 
-;:  immediate#  0xc3 , ;
+;:  immediate#
+	prev @ dup @b
+	0xe8 = nip if 0xe9 swap !b else 0xc3 , endif
+;
 
 smudge:
 hide:
@@ -42,15 +45,34 @@ _eol_comment:
 
 -- double-underscore prefixed functions allow us to define new word suffixes
 __@: find apply @ ;
-__!: find apply !  ;
+__!: find apply ! ;
 
 -- double-underscore suffixed functions allow us to define new data prefixes
 -- Currently only number bases are supported
 0b__: 2 base ;  -- Allows us to use literal binary numbers using the following syntax: 0b100 
 
-nl: 0x0a . ;  ( -- )
+-- define a few useful character constants
+'\n': 0x0a ;
+'\t': 0x09 ;
+'.':  0x2e ;
+'!':  0x21 ;
+
+nl:  '\n' . ;  ( -- )
+tab: '\t' . ;
 spc: 32 . ;
-tab: 9 . ;
 
 
+( string handling )
+
+(
+w::  immediate#  -- word to end of line
+	_w' _   -- compile a call to the word_literal primitive
+_eol_word:
+	key '\n' = if drop ; endif  -- read to eol. = preserves its first argument
+	,  -- store byte to address in RegA and inc
+	_eol_word
+; smudge#
+
+w: hello world
+)
 -- vim:ft=cantilever
