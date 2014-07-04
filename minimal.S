@@ -242,10 +242,9 @@ end
 
 prim word_literal
 	// ( -- w )
-	_update_Z
 	_dup
 	mov ToRS, ToS    // fetch our return address (where string is stored)
-	mov (ToS), RegC  // fetch count
+	movzbl (ToS), RegC  // fetch count
 	add RegC, ToRS   // update our return address by string length..
 	incl ToRS         // ...plus one for the length count.
 end
@@ -435,64 +434,11 @@ prim def
 	pop RegA
 end
 
-/*prim fetch_byte
-	_dup
-	movzbl (RegA), ToS
-end
-
-prim fetch_byte_inc
-	_dup
-	movzbl (RegA), ToS
-	inc RegA
-end
-
-prim fetch
-	_pushds (RegA)
-end
-
-prim fetch_from_addr_on_stack
-	// ( a -- n )
-	mov (ToS), ToS
-end
-
-prim fetch_inc
-	_pushds (RegA)
-	_advance_cell RegA
-end
-
-prim store_byte
-	movb %al, (RegA)
-	_drop
-end
-
-prim store_byte_inc
-	stosb
-	_drop
-end */
-
 prim store_alloc_byte
 	call prim_store_byte_inc
 	mov RegA, var_H
 end
 
-/* prim store
-	movl ToS, (RegA)
-	_drop
-end
-
-prim store_inc
-	stosl
-	_drop
-end
-
-prim store_to_addr_on_stack
-	// ( n a -- )	
-	movl NoS, RegB
-	_nip
-	mov RegB, (ToS)
-	_drop
-end
-*/
 prim emit
 	// uses real register names rather than macros because
 	// register usage of this function is OS defined and 
@@ -580,7 +526,7 @@ entry "main",  prim_M
 entry "prev",  prim_Z
 
 // memory access
-entry "a@",       prim_get_A
+entry "a",       prim_get_A
 entry "a!",       prim_set_A
 entry "@",        prim_fetch
 entry "@+",       prim_fetch_inc

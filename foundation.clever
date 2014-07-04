@@ -4,7 +4,7 @@ immediate:
 
 ;:  immediate#
 	prev @ dup @b
-	0xe8 = nip if 0xe9 swap !b else 0xc3 , endif
+	0xe8 = nip if 0xe9 swap !b else 0xc3 , drop endif
 ;
 
 smudge:
@@ -64,15 +64,18 @@ spc: 32 . ;
 
 ( string handling )
 
-(
+
 w::  immediate#  -- word to end of line
 	_w' _   -- compile a call to the word_literal primitive
+	0 ,     -- store a byte for the string length
+	a 0     -- counter and address to store it to onto stack
 _eol_word:
-	key '\n' = if drop ; endif  -- read to eol. = preserves its first argument
+	key '\n' = if drop swap !b ; endif  -- read to eol. = preserves its first argument
 	,  -- store byte to address in RegA and inc
+	1+ -- increment counter
 	_eol_word
 ; smudge#
 
 w: hello world
-)
+
 -- vim:ft=cantilever

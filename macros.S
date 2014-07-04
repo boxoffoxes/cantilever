@@ -23,6 +23,7 @@
 #define RegB  %ebx
 #define RegBl %bl
 #define RegC  %ecx
+#define RegCl  %cl
 #define RegD  %edx
 #define RegE  %ebp
 
