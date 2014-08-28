@@ -1,19 +1,11 @@
 module Main where
 
+import DataTypes
+
 import Data.Char
 import Data.Maybe
 
-type Dict = [(String, Expr)]
 
-data Instr = Nop
-           | Def
-           | Ret
-           | Inc
-           | Dec
-           | Imm
-           | Lit Int
-           | Str String
-    deriving Show
 
 defDict :: Dict
 defDict = reverse [ ("nop", Prim Nop ),
@@ -22,30 +14,6 @@ defDict = reverse [ ("nop", Prim Nop ),
                     (";"  , Word Imm [Prim Ret] ),
                     ("1+" , Prim Inc ),
                     ("1-" , Prim Dec ) ]
-
-data Expr = Prim Instr
-          | Word Instr [Expr]
-          | Suffix Expr Label
-          | Error String
-    deriving Show
-
-type Label = String
-
-type Stack = [Expr]
-
-data VM = VM { dict :: Dict , ds :: Stack , rs :: Stack }
-type Backend a = [(Instr, a)]
-
-
-interpBackend :: Backend (VM -> VM)
-interpBackend = [ (Nop, \vm -> vm) ]
-{-           | Def
-           | Ret
-           | Inc
-           | Dec
-           | Imm
-           | Lit Int
-           | Str String -}
 
 
 space :: Char -> Bool
@@ -93,17 +61,24 @@ number w = fromBase 10 w
 
 wLex :: Dict -> Label -> Expr
 wLex d w = case vs of 
-                [] -> Error $ '"' : w ++ "\" was not found"
+                [] -> Error ('"' : w ++ "\" was not found") ""
                 _  -> fromJust $ head vs
     where
         vs = dropWhile isNothing $ [ wLookup d w , wSuffix d w, wNumber d w ]
 
 parse :: Dict -> String -> [Expr]
 parse d [] = []
-parse d src = (i:parse d src')
+parse d src = case i of
+                Error msg _ -> Error msg (take 50 src) : parse d src'
+                _           -> i:parse d src'
     where
         (w, src') = word src
         i = wLex d w
+
+
+cReset :: VM -> VM
+cReset vm = vm { rs = [] }
+
 
 {-interpret :: Backend -> Expr -> Expr
 interpret bk (Prim i) 
