@@ -18,12 +18,13 @@ data Expr = Prim Instr
           | Error String Context
     deriving Show
 
-data VM = VM { dict :: Dict , ds :: Stack , rs :: Stack, heap = Heap }
+data VM = VM { dict :: Dict , ds :: Stack , rs :: Stack, heap :: Heap }
     deriving Show
   
+type Addr = Int
 type Label = String
 type Context = String
-type Stack = [Expr]
+type Stack = [Instr]
 type Heap = [(Addr, [Expr])]
 
 type Backend a = [(Instr, a)]

@@ -67,8 +67,8 @@ spc: 32 . ;
 
 w::  immediate#  -- word to end of line
 	_w' _   -- compile a call to the word_literal primitive
-	0 ,     -- store a byte for the string length
 	a 0     -- counter and address to store it to onto stack
+	0 ,     -- store a byte for the string length
 _eol_word:
 	key '\n' = if drop swap !b ; endif  -- read to eol. = preserves its first argument
 	,  -- store byte to address in RegA and inc
@@ -76,6 +76,6 @@ _eol_word:
 	_eol_word
 ; smudge#
 
-w: hello world
+-- w: hello world
 
 -- vim:ft=cantilever

@@ -1,6 +1,7 @@
 module Main where
 
 import DataTypes
+import Interpreter
 
 import Data.Char
 import Data.Maybe
@@ -88,5 +89,8 @@ interpret bk (Word i xs) =
 
 main :: IO ()
 main = do
-    putStrLn "Hello world"
-
+    src <- getLine
+    let ast = parse defDict src
+    putStrLn $ show ast
+    return ()
+    
