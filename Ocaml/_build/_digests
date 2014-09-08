@@ -1,0 +1,5 @@
+"Resource: /home/gerbil/Common/Sources/HackForth/Ocaml/cantilever.ml": "\146\028\238\143\156l\183Y\207H\245+\235s\215\249"
+"Rule: ocaml: ml & cmi -> cmx & o (%=cantilever )": "KR\012\001\152\159\161\164\154\128*I\018\250\204\\"
+"Rule: ocaml dependencies ml (%=cantilever )": "\235\169\0191\184(9\228\0062\129(\194@\2206"
+"Rule: ocaml: ml -> cmo & cmi (%=cantilever )": "t\196@j\165\020\229\194\190\208[\177\226\020\186\000"
+"Rule: ocaml: cmx* & o* -> native (%=cantilever )": "\140\163\210T\163\n*\207\191e\163\200\004ad\151"

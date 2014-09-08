@@ -1,0 +1,24 @@
+### Starting build.
+# Target: cantilever.ml.depends, tags: { extension:ml, file:cantilever.ml, ocaml, ocamldep, quiet }
+/usr/bin/ocamldep.opt -modules cantilever.ml > cantilever.ml.depends
+# Target: cantilever.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:cantilever.cmo, file:cantilever.ml, implem, ocaml, quiet }
+/usr/bin/ocamlc.opt -c -o cantilever.cmo cantilever.ml
++ /usr/bin/ocamlc.opt -c -o cantilever.cmo cantilever.ml
+File "cantilever.ml", line 22, characters 22-981:
+Warning 8: this pattern-matching is not exhaustive.
+Here is an example of a value that is not matched:
+(StrLit _|If _|Else _|Fetch|Store|Div|Mul|Mod|Xor|Eq|NEq|Lt|Gt|LtE|GtE|End)
+File "cantilever.ml", line 37, characters 6-9:
+Warning 11: this match case is unused.
+# Target: cantilever.cmx, tags: { compile, extension:cmx, extension:ml, file:cantilever.cmx, file:cantilever.ml, implem, native, ocaml, quiet }
+/usr/bin/ocamlopt.opt -c -o cantilever.cmx cantilever.ml
++ /usr/bin/ocamlopt.opt -c -o cantilever.cmx cantilever.ml
+File "cantilever.ml", line 22, characters 22-981:
+Warning 8: this pattern-matching is not exhaustive.
+Here is an example of a value that is not matched:
+(StrLit _|If _|Else _|Fetch|Store|Div|Mul|Mod|Xor|Eq|NEq|Lt|Gt|LtE|GtE|End)
+File "cantilever.ml", line 37, characters 6-9:
+Warning 11: this match case is unused.
+# Target: cantilever.native, tags: { dont_link_with, extension:native, file:cantilever.native, link, native, ocaml, program, quiet }
+/usr/bin/ocamlopt.opt cantilever.cmx -o cantilever.native
+# Compilation successful.
