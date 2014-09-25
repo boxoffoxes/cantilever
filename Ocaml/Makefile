@@ -17,9 +17,6 @@ img/%.pdf : img/%.dot
 %.S : %.txt
 	awk '/^~~~~~/ {write=0} write == 1 {print $0;} /^~~~~* gnuassembler/ { write=1 } ' $< > $@
 
-hack : copy_and_tweak.S
-	gcc -m32 -nostdlib -static -Wl,--oformat=binary -o $@ $<
-
 % : %.S
 	gcc -m32 -g -nostdlib -static -Wl,--build-id=none -o $@ $<
 
