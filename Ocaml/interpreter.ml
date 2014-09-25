@@ -1,7 +1,7 @@
 open Instructions
 
 
-type vm = {
+(* type vm = {
     ds : int32 list ;
     rs : int32 list ;
     heap : int32 array ;
@@ -12,7 +12,7 @@ type vm = {
 let eval_instr vm ins = match ins with
     | Lit n -> { vm with ds = (n :: ds) }
 ;;
-
+*)
 
 let eval prog =
     [ "success" ]

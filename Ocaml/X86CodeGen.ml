@@ -25,8 +25,21 @@ let rec compile_instr ins = match ins with
 let preamble = [
     ".globl cantilever_main" ;
     "cantilever_main:" ;
+    "   pusha" ;
+    "   movl %esp, c_stack" ;
 ]
-let postamble = ["ret"]
+let postamble = [
+    "   movl %eax, canti_result" ;
+    "   movl c_stack, %esp" ;
+    "   popa" ;
+    "   movl canti_result, %eax" ;
+    "   ret" ;
+    ".data" ;
+    "c_stack:" ;
+    "   .int 0" ;
+    "canti_result:" ;
+    "   .int 0" ;
+]
 let compile prog =
     List.concat [ preamble ; List.map compile_instr prog ; postamble]
 ;;

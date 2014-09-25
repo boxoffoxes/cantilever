@@ -59,6 +59,8 @@ let parse_prim word st = match word with
     | "+"     -> Add
     | "-"     -> Sub
 
+    | ";"     -> Ret
+
     | "--"    -> Comment ( consume_to is_newline st )
     | "("     -> Comment ( comment_to is_closing_paren st )
 
@@ -77,7 +79,7 @@ with
     Stream.Failure -> List.rev prog
 ;;
 
-let usage () = printf "blah" ; exit 0 ;;
+let usage () = printf "Yer doin' it all wrong!\n" ; exit 0 ;;
 
 let rec parse_args args =
     match args with
@@ -88,7 +90,7 @@ let rec parse_args args =
     | "-b" :: "null" :: args' ->
             settings.compiler <- CantileverCodeGen.compile ; parse_args args'
     | "-h" :: _ | "--help" :: _ -> usage () ;
-    | opt :: _ when opt.[1] == '-' -> usage () ;
+    | opt :: _ when opt.[0] = '-' -> usage () ;
     | file :: [] when String.length file > 0 -> 
             settings.source <- open_in file ;
     | _ -> usage () ;
