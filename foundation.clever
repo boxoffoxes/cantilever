@@ -62,6 +62,10 @@ tab: '\t' . ;
 spc: 32 . ;
 
 
+[: immediate#
+	
+;
+
 ( string handling )
 
 

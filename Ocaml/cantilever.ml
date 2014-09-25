@@ -1,7 +1,23 @@
 open Printf
 open Instructions
 
-let src = Stream.of_channel stdin ;;
+
+type settings = {
+    mutable compile : bool ;
+    mutable compiler : prim list -> string list ;
+    mutable interpreter : prim list -> string list ;
+    mutable source : in_channel ;
+    mutable dest : out_channel ;
+}
+
+let settings = {
+    compile = false ; 
+    compiler = X86CodeGen.compile ;
+    interpreter = Interpreter.eval ;
+    source = stdin ;
+    dest = stdout ;
+}
+
 
 let is_whitespace c = compare (Some ' ') c >= 0 ;;
 let is_not_whitespace c = not ( is_whitespace c ) ;;
@@ -61,25 +77,34 @@ with
     Stream.Failure -> List.rev prog
 ;;
 
-module type CANTILEVER_BACKEND = sig
-    val compile : prim list -> string list
-end;;
+let usage () = printf "blah" ; exit 0 ;;
 
-
-
-module Backend = functor ( Gen : CANTILEVER_BACKEND ) ->
-struct
-    let compile = Gen.compile
-end;;
-
+let rec parse_args args =
+    match args with
+    | [] -> ()
+    | "-c" :: args' -> settings.compile <- true ; parse_args args'
+    | "-b" :: "x86" :: args' ->
+            settings.compiler <- X86CodeGen.compile ; parse_args args'
+    | "-b" :: "null" :: args' ->
+            settings.compiler <- CantileverCodeGen.compile ; parse_args args'
+    | "-h" :: _ | "--help" :: _ -> usage () ;
+    | opt :: _ when opt.[1] == '-' -> usage () ;
+    | file :: [] when String.length file > 0 -> 
+            settings.source <- open_in file ;
+    | _ -> usage () ;
+;;
 
 let main = 
-    let module Interp  = Backend(Interpreter) in
-    let module Backend = Backend(X86CodeGen) in
-    (*let module Backend = Backend(CantileverCodeGen) in*)
+    parse_args ( List.tl ( Array.to_list Sys.argv ) ) ;
+    let src = Stream.of_channel settings.source in
     let prog = parse src in
-    let asm  = Backend.compile prog in
-    List.iter print_endline asm ;
+    match settings.compile with 
+    | true -> 
+        let asm  = settings.compiler prog in
+        List.iter print_endline asm ;
+    | false ->
+        let results = settings.interpreter prog in
+        List.iter print_endline results ;
 ;;
 
 main
