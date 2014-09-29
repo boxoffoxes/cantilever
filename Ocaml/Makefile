@@ -23,3 +23,5 @@ img/%.pdf : img/%.dot
 %.native : %.ml
 	ocamlbuild.native $@
 
+clean :
+	rm -f *.o a.out cantilever.native _build/*

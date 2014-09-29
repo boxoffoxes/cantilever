@@ -23,6 +23,7 @@ let is_whitespace c = compare (Some ' ') c >= 0 ;;
 let is_not_whitespace c = not ( is_whitespace c ) ;;
 let is_newline c = compare (Some '\n') c == 0 || compare (Some '\r') c == 0 ;;
 let is_closing_paren c = compare (Some ')') c = 0 ;;
+let is_closing_quote c = compare (Some '"') c = 0 ;;
 
 let consume_to pred st =
     let buf = Buffer.create 16 in
@@ -32,7 +33,8 @@ let consume_to pred st =
     Buffer.contents buf
 ;;
 
-let comment_to pred st =
+(* quote_to is like consume_to, but also drops the final character *)
+let quote_to pred st =
     let str = consume_to pred st in
     ignore (Stream.next st); 
     str
@@ -51,6 +53,8 @@ let parse_prim word st = match word with
     | "true"  -> Lit (Int32.minus_one)
     | "false" -> Lit (Int32.zero)
 
+    | "s\""   -> Str ( quote_to is_closing_quote st )
+
     | "dup"   -> Dup
     | "not"   -> Not
 
@@ -59,10 +63,13 @@ let parse_prim word st = match word with
     | "+"     -> Add
     | "-"     -> Sub
 
+    | "="     -> Eq
+    | "<"     -> Lt
+
     | ";"     -> Ret
 
     | "--"    -> Comment ( consume_to is_newline st )
-    | "("     -> Comment ( comment_to is_closing_paren st )
+    | "("     -> Comment ( quote_to is_closing_paren st )
 
     | _       -> raise Not_found
 ;;
