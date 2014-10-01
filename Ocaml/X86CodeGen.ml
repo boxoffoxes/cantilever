@@ -14,7 +14,6 @@ string_%03d:
 " i i str
 ;;
 
-
 let rec compile_instr ins = match ins with
     | Lit n  -> compile_instr Dup ^ " ; " ^ ( match n with
                 | 0l    -> "xor %eax, %eax"

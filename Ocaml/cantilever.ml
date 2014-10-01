@@ -45,6 +45,13 @@ let next_word st =
     consume_to is_whitespace st
 ;;
 
+let strip_suffix word = 
+    let split_at = String.length word - 1 in
+    let suf = "__" ^ String.sub word split_at 1 in
+    let word' = String.sub word 0 split_at in
+    (word', suf)
+;;
+
 let parse_number word =
     Lit ( Int32.of_string word )
 ;;
@@ -71,6 +78,7 @@ let parse_prim word st = match word with
     | "--"    -> Comment ( consume_to is_newline st )
     | "("     -> Comment ( quote_to is_closing_paren st )
 
+    | "__:"   -> Def
     | _       -> raise Not_found
 ;;
 
@@ -78,8 +86,12 @@ let rec parse ?(prog=[]) src = try
     let word = next_word src in
     let i = try
         parse_prim word src
-    with Not_found ->
+    with Not_found -> try
         parse_number word
+    with Failure _ ->
+        let (word', suf) = strip_suffix word in
+        let ins = parse_prim suf src in
+        Imm ins  (* TODO: handle arg *)
     in
     parse ~prog:(i::prog) src
 with
