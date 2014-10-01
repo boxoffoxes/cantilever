@@ -26,7 +26,7 @@ let prim_add st = match st with
 ;;
 
 let exec vm ins = match ins with
-    | Def   -> vm 
+    | Def   -> vm (* TODO *)
     | Lit n -> { vm with ds = n :: vm.ds }
     | Inc -> { vm with ds = prim_add (1l :: vm.ds) }
     | i -> failwith ("Instruction not implemented: " ^ string_of_prim i)
