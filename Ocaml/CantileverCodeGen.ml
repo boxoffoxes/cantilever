@@ -17,11 +17,11 @@ let rec compile_instr ins = match ins with
     | Call s -> s
     | Tail s -> s ^ " ;"
     | Ret   -> ";"
-    | Comment s -> begin
-        match String.contains s '\n' with
+    | Comment s ->
+            begin match String.contains s '\n' with
                     | true -> sprintf "( %s )" s
                     | false -> sprintf "-- %s" s
-    end
+            end
     | i     -> failwith ("Could not compile: " ^ string_of_prim i)
 ;;
 let compile prog = List.map compile_instr prog ;;
