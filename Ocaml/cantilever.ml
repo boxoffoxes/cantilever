@@ -86,7 +86,7 @@ let parse_suffix word =
     let w, suffix = strip_suffix word in
     match suffix with
     | ':' -> Hashtbl.add dictionary w w ; Def w
-    | _   -> print_endline word ; raise Not_found
+    | _   -> raise Not_found
 ;;
 
 let rec parse ?(prog=[]) src = try

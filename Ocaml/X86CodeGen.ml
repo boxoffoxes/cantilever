@@ -15,6 +15,9 @@ let label_for ins = match ins with
     | Str s  ->
             let id = next_id () in
             sprintf "string_%s" id
+    | Def "main" ->
+            Hashtbl.add dict "main" "cantilever_main" ;
+            "cantilever_main"
     | Def w  ->
             let id = sprintf "cantilever_%s" (next_id ()) in
             Hashtbl.add dict w id ;
@@ -76,7 +79,7 @@ and inline_prim ins = match ins with
     | Call s -> [ sprintf "call %s // %s" (label_for ins) s ]
     | Ret    -> ["ret"]
 
-    | i      -> failwith ("No code generator for " ^ string_of_prim i )
+    | i      -> failwith ("No assembly for " ^ string_of_prim i )
 ;;
 
 let rec compile_instr ?(inline=false) ins = match ins with
@@ -115,15 +118,15 @@ let rec optimise ?(src=[]) prog = match prog with
     | [] -> List.rev src
 ;;
 
-let preamble = [
-    ".globl cantilever_main" ;
-    "cantilever_main:" ;
+let preamble = []
+let postamble = [
+    ".globl cantilever_init" ;
+    "cantilever_init:" ;
     "   pusha" ;
     "   movl %esp, c_stack" ;
     "   movl cantilever_ds_ptr, %esi" ;
     "   movl cantilever_rs_ptr, %esp" ;
-]
-let postamble = [
+    "   call cantilever_main" ;
     "   lea -4(%esi), %esi ; movl %eax, (%esi)" ;
     "   movl %esi, cantilever_ds_ptr" ;
     "   movl c_stack, %esp" ;
@@ -134,6 +137,13 @@ let postamble = [
     "   .int 0" ;
 ]
 let compile prog =
-    List.concat [ preamble ; List.map compile_instr prog ; postamble]
+    let asm =
+        List.concat [ preamble ; List.map compile_instr prog ; postamble]
+    in
+    try
+        Hashtbl.find dict "main" ;
+        asm
+    with Not_found ->
+        failwith "No 'main' function defined in source program"
     (*List.concat [ preamble ; optimise prog ; postamble]*)
 ;;

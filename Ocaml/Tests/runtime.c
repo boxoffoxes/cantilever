@@ -22,7 +22,7 @@ void dump_stack() {
 
 int main(int argc, char **argv) {
 	int n;
-	cantilever_main();
+	cantilever_init();
 	n = &cantilever_dstack[CANTILEVER_STACK_SIZE-1] - cantilever_ds_ptr;
 	printf("Stack is %d deep:\n", n);
 	dump_stack(cantilever_dstack, n);
