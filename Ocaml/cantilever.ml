@@ -1,6 +1,7 @@
 open Printf
 open Instructions
 
+let dictionary = Hashtbl.create 32 ;;
 
 type settings = {
     mutable compile : bool ;
@@ -47,7 +48,7 @@ let next_word st =
 
 let strip_suffix word = 
     let split_at = String.length word - 1 in
-    let suf = "__" ^ String.sub word split_at 1 in
+    let suf = word.[split_at] in
     let word' = String.sub word 0 split_at in
     (word', suf)
 ;;
@@ -78,8 +79,14 @@ let parse_prim word st = match word with
     | "--"    -> Comment ( consume_to is_newline st )
     | "("     -> Comment ( quote_to is_closing_paren st )
 
-    | "__:"   -> Def
-    | _       -> raise Not_found
+    | _       -> Call (Hashtbl.find dictionary word)
+;;
+
+let parse_suffix word =
+    let w, suffix = strip_suffix word in
+    match suffix with
+    | ':' -> Hashtbl.add dictionary w w ; Def w
+    | _   -> print_endline word ; raise Not_found
 ;;
 
 let rec parse ?(prog=[]) src = try
@@ -87,11 +94,9 @@ let rec parse ?(prog=[]) src = try
     let i = try
         parse_prim word src
     with Not_found -> try
+        parse_suffix word
+    with Not_found -> 
         parse_number word
-    with Failure _ ->
-        let (word', suf) = strip_suffix word in
-        let ins = parse_prim suf src in
-        Imm ins  (* TODO: handle arg *)
     in
     parse ~prog:(i::prog) src
 with
