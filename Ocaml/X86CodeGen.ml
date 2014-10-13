@@ -3,57 +3,89 @@ open Instructions
 
 let id = ref 0 ;;
 let dict = Hashtbl.create 32 ;;
+(*let called_prims = Hashtbl.create 32 ;;*)
 
-let string_asm str = let i = !id in 
-    id := !id + 1 ;
-    sprintf "movl $string_%03d, %%eax
+let next_id () =
+    let i = !id in
+    id := i+1;
+    sprintf "%03d" i
+;;
+
+let label_for ins = match ins with
+    | Str s  ->
+            let id = next_id () in
+            sprintf "string_%s" id
+    | Def w  ->
+            let id = sprintf "cantilever_%s" (next_id ()) in
+            Hashtbl.add dict w id ;
+            id
+    | Call w -> Hashtbl.find dict w
+    | Lit _  -> failwith "Can't label a literal value!"
+    | _      -> "cantilever_prim_" ^ string_of_prim ins
+;;
+
+
+let string_asm ins = match ins with 
+| Str s ->
+    let lab = label_for ins in
+    [ sprintf "movl $%s, %%eax
 .data
-string_%03d:
+%s:
     .asciz \"%s\"
 10001:
 .text
-" i i str
+" lab lab s ]
+| _ -> failwith (string_of_prim ins ^ " is not a string!")
 ;;
 
-let fun_asm w =
-    let i = !id in
-    id := i + 1 ;
-    Hashtbl.add dict w i ;
-    sprintf "cantilever_%03d:  /* %s */" i w
+let indent code = "\t" ^ String.concat "\n\t" code ^ "\n" ;;
+
+let rec logical_prim setcc =
+    "test (%esi), %eax"
+    :: (setcc ^ " %al")
+    :: "and $0xff, %eax"
+    :: "dec %eax"
+    :: inline_prim Nip
+and inline_prim ins = match ins with
+    | Lit n  -> inline_prim Dup @ begin match n with
+                | 0l    -> [ "xor %eax, %eax" ]
+                | (-1l) -> [ "xor %eax, %eax" ; "dec %eax" ]
+                | 1l    -> [ "xor %eax, %eax" ; "inc %eax" ]
+                | _     -> [ sprintf "movl $%ld, %%eax" n  ]
+    end
+    | Str s  -> inline_prim Dup @ string_asm ins
+    | Dup    -> ["lea -4(%esi), %esi" ; "movl %eax, (%esi)"]
+    | Nip    -> ["lea 4(%esi), %esi"]
+
+    | Inc    -> ["inc %eax"]
+    | Dec    -> ["dec %eax"]
+    | Add    -> "addl (%esi), %eax" :: inline_prim Nip
+    | Sub    -> "subl (%esi), %eax" :: inline_prim Nip
+
+    | Not    -> ["not %eax"]
+
+    (* Note: logical prims use the inverse setcc instruction because
+     * we use -1 and 0 as true and false *)
+    | Eq     -> (logical_prim "setne")
+    | Lt     -> (logical_prim "setge")
+
+    | Call s -> [ sprintf "call %s // %s" (label_for ins) s ]
+    | Ret    -> ["ret"]
+
+    | i      -> failwith ("No code generator for " ^ string_of_prim i )
 ;;
 
-let rec compile_instr ins = match ins with
-    | Lit n  -> compile_instr Dup ^ " ; " ^ ( match n with
-                | 0l    -> "xor %eax, %eax"
-                | (-1l) -> "xor %eax, %eax ; dec %eax"
-                | 1l    -> "xor %eax, %eax ; inc %eax"
-                | _     -> sprintf "movl $%ld, %%eax" n )
-    | Str s  -> compile_instr Dup ^ " ; " ^ string_asm s
-    | Dup    -> "   lea -4(%esi), %esi ; movl %eax, (%esi)"
-    | Nip    -> "   lea 4(%esi), %esi"
-
-    | Inc    -> "   inc %eax"
-    | Dec    -> "   dec %eax"
-    | Add    -> "   addl (%esi), %eax ; " ^ compile_instr Nip
-    | Sub    -> "   subl (%esi), %eax ; " ^ compile_instr Nip
-
-    | Not    -> "   not %eax"
-
-    | Eq     -> "   test (%esi), %eax ; setne %al ; and $0xff, %eax ; dec %eax ; " ^ compile_instr Nip
-    | Lt     -> "   cmpl (%esi), %eax ; setge %al ; and $0xff, %eax ; dec %eax ; " ^ compile_instr Nip
-
-    | Def s  -> fun_asm s
-    | Call s -> sprintf "   call cantilever_%03d // %s" (Hashtbl.find dict s) s
-    | Ret    -> "ret"
+let rec compile_instr ?(inline=false) ins = match ins with
+    | Def w  -> sprintf "%s: // %s " (label_for ins) w
     | Comment str ->
             sprintf "/* %s */" str (* TODO: fails if comment contains */ *)
-    | i      -> failwith ("No code generator for " ^ string_of_prim i )
+    | _      -> indent (inline_prim ins)
 ;;
 
 let rec optimise ?(src=[]) prog = match prog with
     (* tail-call elimination *)
-    | Call s :: Ret :: prog'  ->
-            let asm = sprintf "   jmp cantilever_%03d // %s"  (Hashtbl.find dict s) s in
+    | Call w as ins :: Ret :: prog'  ->
+            let asm = sprintf "jmp %s // tail %s" (label_for ins) w in
             optimise ~src:(asm::src) prog'
 
     (* constant propagation *)
