@@ -66,8 +66,12 @@ and inline_prim ins = match ins with
 
     (* Note: logical prims use the inverse setcc instruction because
      * we use -1 and 0 as true and false *)
-    | Eq     -> (logical_prim "setne")
-    | Lt     -> (logical_prim "setge")
+    | Eq     -> logical_prim "setne"
+    | Ne     -> logical_prim "seteq"
+    | Lt     -> logical_prim "setge"
+    | Gt     -> logical_prim "setle"
+    | LtE    -> logical_prim "setgt"
+    | GtE    -> logical_prim "setlt"
 
     | Call s -> [ sprintf "call %s // %s" (label_for ins) s ]
     | Ret    -> ["ret"]
