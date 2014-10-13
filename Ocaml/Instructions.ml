@@ -5,7 +5,7 @@ type prim =
     | Imm of prim
     | Dup | Nip
     | Not
-    | Eq | Lt
+    | Eq | Ne | Lt | Gt | LtE | GtE
     | Inc | Dec | Add | Sub
     | Def of string
     | Comment of string
@@ -22,7 +22,11 @@ let rec string_of_prim i = match i with
     | Nip -> "Nip"
     | Not -> "Not"
     | Eq  -> "Eq"
-    | Lt  -> "Lt"
+    | Ne     -> "Ne"
+    | Lt     -> "Lt"
+    | Gt     -> "Gt"
+    | LtE    -> "LtE"
+    | GtE    -> "GtE"
     | Inc -> "Inc"
     | Dec -> "Dec"
     | Add -> "Add"
