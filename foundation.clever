@@ -71,7 +71,7 @@ spc: 32 . ;
 
 w::  immediate#  -- word to end of line
 	_w' _   -- compile a call to the word_literal primitive
-	a 0     -- counter and address to store it to onto stack
+	hp@ 0     -- counter and address to store it to onto stack
 	0 ,     -- store a byte for the string length
 _eol_word:
 	key '\n' = if drop swap !b ; endif  -- read to eol. = preserves its first argument

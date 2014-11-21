@@ -12,115 +12,116 @@ prim nip
 	_nip
 end
 
+prim tuck
+	_swap
+	_over
+end
+
 prim swap
 	_swap
+end
+
+prim over
+	_over
 end
 
 /* Return stack shuffling prims */
 
 prim push    // TODO: not inlinable, due to rstack manipulation!
-	pop RegB // make sure our return address
-	push ToS
+	pop %ebx // make sure our return address
+	push %eax
 	_drop
-	push RegB // remains on ToRS
+	push %ebx // remains on ToRS
 end
 
 prim pop     // TODO: not inlinable
-	pop RegB // our return address
+	pop %ebx // our return address
 	_dup
-	pop ToS
-	push RegB
+	pop %eax
+	push %ebx
 end
 
 /* Memory address register prims */
 
-prim set_A
-	mov ToS, RegA
+prim set_hp
+	mov %eax, %edi
 	_drop
 end
 
-prim get_A
+prim get_hp
 	_dup
-	mov RegA, ToS
-end
-
-prim study_word
-	// ( w -- )
-	call prim_set_A
-	_clear RegC
-	movb (RegA), %cl
-	inc RegA
+	mov %edi, %eax
 end
 
 
 /* Arithmetic */
 
-prim add
-	addl NoS, ToS
+prim add, "+"
+	addl (%esi), %eax
 	_nip
 end
 
-prim subtract
+prim subtract, "-"
 	_swap
-	subl NoS, ToS
+	subl (%esi), %eax
 	_nip
 end
 
-prim inc
-	inc ToS
+prim inc, "1+"
+	inc %eax
 end
 
-prim dec
-	dec ToS
+prim dec, "1-"
+	dec %eax
 end
 
 /* Comparison operators */
 
 prim equals
 	// ( n n -- n bool )
-	cmp ToS, NoS
-	setne ToSl    // Set %al to 1 if not equal, 0 otherwise
-	and $0xff, ToS // make sure all high bits are unset
-	dec ToS      // ToS now -1 if equal or 0 if not. No jump required!
+	cmp %eax, (%esi)
+	setne %al    // Set %al to 1 if not equal, 0 otherwise
+	and $0xff, %eax // make sure all high bits are unset
+	dec %eax      // ToS now -1 if equal or 0 if not. No jump required!
 end
 
 prim greater_than
 	// ( n n -- n bool )
-	cmp ToS, NoS
-	setle ToSl
-	and $0xff, ToS
-	dec ToS
+	cmp %eax, (%esi)
+	setle %al
+	and $0xff, %eax
+	dec %eax
 end
 
 prim less_than
 	// ( n n -- n bool )
-	cmp ToS, NoS
-	setge ToSl
-	and $0xff, ToS
-	dec ToS
+	cmp %eax, (%esi)
+	setge %al
+	and $0xff, %eax
+	dec %eax
 end
 
 /* Flow control */
 
 prim cond_return  // TODO: not inlinable
 	// ( bool -- )
-	test ToS, ToS
+	test %eax, %eax
 	_drop
 	jz 1f
-	pop RegB
+	pop %ebx
 1:
 end
 
 prim if   // TODO: not inlinable
 	// ( bool -- )
-	test ToS, ToS
-	pop ToS     // return addr contains addr of end of conditional block
+	test %eax, %eax
+	pop %eax     // return addr contains addr of end of conditional block
 	jnz 1f
-	push (ToS)  // set this as our real return address
+	push (%eax)  // set this as our real return address
 	jmp 2f
 1:
-	add $4, ToS // skip the jump address
-	push ToS
+	add $4, %eax // skip the jump address
+	push %eax
 2:
 	_drop
 end
@@ -128,61 +129,61 @@ end
 prim jump // TODO: not inlinable
 	// ( -- )
 	// unconditional jump
-	pop RegB
-	push (RegB)
+	pop %ebx
+	push (%ebx)
 end
 
 /* memory access */
 
 prim fetch_byte
 	// ( a -- b )
-	movzbl (ToS), ToS
+	movzbl (%eax), %eax
 end
 
 prim fetch_byte_inc
 	// ( -- b )
 	_dup
-	movzbl (RegA), ToS
-	inc RegA
+	movzbl (%edi), %eax
+	inc %edi
 end
 
 prim fetch 
 	// ( a -- n )
-	mov (ToS), ToS
+	mov (%eax), %eax
 end
 
 prim fetch_inc
 	// ( -- n )
 	_dup
-	mov (RegA), ToS
-	addl $4, RegA
+	mov (%edi), %eax
+	addl $4, %edi
 end
 
 prim store_byte
 	// ( b a -- )
-	mov NoS, RegB
+	mov (%esi), %ebx
 	_nip
-	movb RegBl, (ToS)
+	movb %bl, (%eax)
 	_drop
 end
 
 prim store_byte_inc
 	// ( b -- )
-	stosb  // TODO: Relies on RegA being %edi
+	stosb
 	_drop
 end
 
 prim store
 	// ( n a -- )
-	mov NoS, RegB
+	mov (%esi), %ebx
 	_nip
-	mov RegB, (ToS)
+	mov %ebx, (%eax)
 	_drop
 end
 
 prim store_inc
 	// ( n -- )
-	stosl  // TODO: Relies on RegA in %edi
+	stosl
 	_drop
 end
 

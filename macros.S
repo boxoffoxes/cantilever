@@ -1,45 +1,38 @@
-/* Register allocation
- * We make heavy use of preprocessor macros to
- * abstract registers and allow for easier
- * porting and changing of execution model
+/*
+ * 
+ * the data stack
+ * 	 ToS   %eax
+ * 	 ToSl  %al
+ * 	 NoS   (%esi)
+ * 	 DSP   %esi
+ * 
+ * the return stack
+ * 	 ToRS  (%esp)
+ * 	 RSP   %esp
+ * 
+ * special purpose registers
+ * 	 Zero  $0
+ * 
+ * General purpose registers:
+ * RegA is the Address Register, RegC is the string counter
+ * 	 RegA  %edi
+ * 	 RegB  %ebx
+ * 	 RegBl %bl
+ * 	 RegC  %ecx
+ * 	 RegCl  %cl
+ * 	 RegD  %edx
+ * 	 RegE  %ebp
+ * 
  */
 
-// the data stack
-#define ToS   %eax
-#define ToSl  %al
-#define NoS   (%esi)
-#define DSP   %esi
-
-// the return stack
-#define ToRS  (%esp)
-#define RSP   %esp
-
-// special purpose registers
-#define Zero  $0
-
-// General purpose registers:
-// RegA is the Address Register, RegC is the string counter
-#define RegA  %edi
-#define RegB  %ebx
-#define RegBl %bl
-#define RegC  %ecx
-#define RegCl  %cl
-#define RegD  %edx
-#define RegE  %ebp
-
-// Thoughts on register saving:
-//
-// With threaded code it is non-trivial for non-primitives to 
-// save registers when ideally the execution model is a stack
-// machine, so the existence of CPU registers should really be
-// hidden.
-
+// var_Z is the most recently compiled instruction
 .macro _update_Z
-	mov RegA, var_Z
+	mov %edi, var_Z
 .endm
 
-.macro _advance_cell reg
-	lea 4(\reg), \reg
+// advance the heap pointer
+.macro _alloc_cell
+	lea 4(%edi), %edi
 .endm
 
 .macro _clear reg
@@ -51,26 +44,44 @@
 .endm
 
 .macro _dup
-	lea -4(DSP), DSP
-	movl ToS, NoS
+	lea -4(%esi), %esi
+	movl %eax, (%esi)
 .endm
 
 .macro _pushds val
 	_dup
-	movl \val, ToS
+	movl \val, %eax
 .endm
 
 .macro _popds dest
-	mov ToS, \dest
+	mov %eax, \dest
 	_drop
 .endm
 
 .macro _nip
-	lea 4(DSP), DSP
+	lea 4(%esi), %esi
 .endm
 
 .macro _swap
-	xchg ToS, NoS
+	xchg %eax, (%esi)
+.endm
+
+.macro _over
+	_dup
+	movl 4(%esi), %eax
+.endm
+
+
+.macro _xt
+	movl 4(%eax), %eax
+.endm
+
+.macro _xh
+	movl 8(%eax), %eax
+.endm
+
+.macro _xl
+	movl 12(%eax), %eax
 .endm
 
 // a word is immediate if its first instruction is a nop
@@ -78,7 +89,28 @@
 	nop
 .endm
 
-.macro prim label
+.macro header label, name, handler
+.section .data
+.globl header_\label
+header_\label:
+	.int dict
+	.int prim_\label
+	.int \handler
+	.byte 10001f - 10000f
+10000:
+	.ascii "\name"
+10001:
+.align 4, 0
+.set dict, header_\label
+.endm
+
+.macro prim label, name, handler=prim_compile_call
+.ifeqs "\name", ""
+	header \label, "\label", \handler
+.else
+	header \label, "\name", \handler
+.endif
+.section .flat
 .globl prim_\label
 prim_\label:
 .endm
@@ -91,7 +123,7 @@ ret
 .macro variable name, val=0
 prim \name
 	_dup
-	mov $var_\name, ToS
+	mov $var_\name, %eax
 end
 .align 4
 var_\name:

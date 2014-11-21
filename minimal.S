@@ -1,4 +1,6 @@
 #include <asm/unistd.h>
+
+.set dict, 0
 #include "macros.S"
 
 .section .flat, "awx", @progbits
@@ -8,9 +10,14 @@
 .align 4, 0x90
 _start:
 	cld
-	mov %esp, DSP
-	lea -2048(%esp), RSP // use part of call stack for data stack
-	mov var_H, RegA
+	mov %esp, %esi
+	lea -2048(%esp), %esp // use part of call stack for data stack
+	movl %esp, var_rs0
+	movl var_H, %edi
+	movl var_D, %eax
+	addl $16, %eax
+	movl %eax, var_free_dict
+	_clear %eax
 	jmp *var_M
 
 
@@ -26,7 +33,7 @@ needs to preserve %eax
     ( x -- y  / abcdeimrv )
 	x -- y is the data stack effect
 	Letters after the slash indicate what side effects result:
-		abcde: These are the virtual GP registers RegA to RegE
+		abcde: These are the virtual GP registers %edi to %ebp
 		m: write to main memory
 		i: system calls
 		r: non call/ret return stack manipulation 
@@ -45,7 +52,7 @@ prim key // TODO: buffered IO
 	int $0x80
 	test %eax, %eax
 	jz prim_bye       // TODO: not PIC
-	movzbl var_K, ToS
+	movzbl var_K, %eax
 	pop %ecx
 end
 
@@ -62,136 +69,220 @@ end
 prim word
 	// ( -- l / Kw )   TODO: built-in stack smash here!
 	call prim_drop_spaces
-	push RegA
-	push RegC
-	_clear RegC
-	mov var_H, RegA  // use the heap for our temporary string buffer
-	inc RegA         // leave space for the char count.
+	push %edi
+	push %ecx
+	_clear %ecx
+	mov var_H, %edi  // use the heap for our temporary string buffer
+	inc %edi         // leave space for the char count.
 0:
 	call prim_store_byte_inc
-	inc RegC
+	inc %ecx
 	call prim_key
 	cmp $' ', %al
 	jbe 1f
 	jmp 0b
 1:
-	_clear ToS            // zero %eax
+	_clear %eax            // zero %eax
 	stosl                 // add 8 bytes of zeroes after word
 	stosl
-	mov var_H, RegA
-	mov %cl, (RegA)       // save character count
-	mov RegA, ToS         // push the label address
-	pop RegC
-	pop RegA
+	mov var_H, %edi
+	mov %cl, (%edi)       // save character count
+	mov %edi, %eax         // push the label address
+	pop %ecx
+	pop %edi
 end
 
 prim get_suffix
-	// ( l -- l a )
-	_dup                 // -- l l
-	movzbl (ToS), ToS    // -- l n    get str count
-	addl NoS, ToS        // -- l l+n  add addr of string to get last char
-	movzbl (ToS), ToS    // -- l b    get last char
-	shl $24, ToS            // -- 0 0xBB000000
-	addl $0x5f5f03, ToS     // -- 0 3"__b"
-	push ToS
-	movl RSP, ToS
-	call prim_lookup_word
-	pop RegB // discard label buffer
+	// ( w -- d )
+	movzbl (%eax), %ecx    // get str count
+	addl %ecx, %eax        // -- w+n  add addr of string to get last char
+	movzbl (%eax), %eax    // -- b    get last char
+	shl $24, %eax          // -- 0xBB000000
+	orl $0x5f5f03, %eax    // -- 3"__b"
+	push %eax              // temp word buffer on RS
+	movl %esp, %eax        // -- buf
+	call prim_find         // -- d 
+	pop %ebx               // discard word buffer
 end
 
 prim strip_suffix
 	// ( l0 -- l1 )
-	_clear RegB
-	movb (ToS), %bl
-	decb (ToS)
-	addl ToS, RegB
-	movb Zero, (RegB)
+	/* warning: must not modify %ebx! */
+	_clear %ecx
+	movb (%eax), %cl
+	decb (%eax)
+	addl %eax, %ecx
+	movb $0, (%ecx)
 end
 
+prim xt
+	// ( d -- xt )
+	_xt
+end
+
+prim xh
+	// ( d -- xh )
+	_xh
+end
+
+prim find
+	// ( w -- d )
+	movl (%eax), %edx // -- 
+	movl var_D, %eax  // -- da
+1: 
+	movl (%eax), %eax // -- d
+	test %eax, %eax   // reached end of dict?
+	jz 2f
+	movl 12(%eax), %ecx  // using %ecx to save stack shuffling
+	cmpl %ecx, %edx
+	jnz 1b
+2:
+end
+
+/*
 prim lookup_word
 	// ( l -- a )
-	push RegA
+	push %edi
 	call prim_D      // -- l @D
 	call prim_fetch  // -- l D
-	call prim_set_A  // -- l
+	call prim_set_hp  // -- l
 	_dup             // -- l l
-	mov (ToS), ToS  // -- l n
+	mov (%eax), %eax  // -- l n
 1:
 	// Test first cell
-	lea -16(RegA), RegA
-	_pushds RegA     // -- l n a
+	lea -16(%edi), %edi
+	_pushds %edi     // -- l n a
 	call prim_fetch  // -- l n n1
-	test ToS, ToS 
+	test %eax, %eax 
 	jz 2f
-	cmp NoS, ToS 
+	cmp (%esi), %eax 
 	_drop            // -- l n
 	jne 1b
 	// found a match TODO: doesn't check second portion of label yet
-	mov 8(RegA), ToS   // -- l a
+	mov 8(%edi), %eax   // -- l a
 	_nip               // -- a
-	pop RegA
+	pop %edi
 	jmp 10001f
 2:
-	pop RegA
+	pop %edi
 	_nip             // -- n 0
 	_nip             // -- 0
 end
+*/
 
-prim eval
+prim eval2
 	// ( l -- ?? )
-	mov ToS, RegE   // store our label address somewhere harmless for future use
-	call prim_lookup_word  // -- a
-	test ToS, ToS
+	mov %eax, %ebp   // store our label address somewhere harmless for future use
+	call prim_find  // -- d
+	test %eax, %eax // not found?
 	jz 1f
-	movb (ToS), %bl
-	cmpb $0x90, %bl  // immediate words
-	je prim_apply
-	jmp prim_compile_call
-1:
-	mov RegE, ToS          // -- l
+	movl 8(%eax), %ebx  // get execution handler to %ebx
+	_xt                 // -- xt
+	jmp *%ebx
+
+1:  /* not found in dictionary, try number conversion */
+	mov %ebp, %eax          // -- l
 	call prim_parse_number // -- n bool
-	test ToS, ToS
+	test %eax, %eax
 	_drop                  // -- n
 	jz 2f
 	jmp prim_data
 2:
-	mov RegE, ToS          // -- l
+	mov %ebp, %eax         // -- l
+	_dup                   // -- l l
+	call prim_get_suffix   // -- l d
+	test %eax, %eax        // not a recognised suffix?
+	jz parse_fail
+	_xt                    // -- l xt
+	_popds %ebx            // -- l
+	call prim_strip_suffix // -- l1
+	jmp *%ebx
+
+/*
+prim eval
+	// ( l -- ?? )
+	mov %eax, %ebp   // store our label address somewhere harmless for future use
+	call prim_lookup_word  // -- a
+	test %eax, %eax
+	jz 1f
+	movb (%eax), %bl
+	cmpb $0x90, %bl  // immediate words
+	je prim_apply
+	jmp prim_compile_call
+1:
+	mov %ebp, %eax          // -- l
+	call prim_parse_number // -- n bool
+	test %eax, %eax
+	_drop                  // -- n
+	jz 2f
+	jmp prim_data
+2:
+	mov %ebp, %eax          // -- l
 	call prim_get_suffix   // -- l a
-	test ToS, ToS
+	test %eax, %eax
 	jz parse_fail
 	_swap                  // -- a l
 	call prim_strip_suffix // -- a l1
 	_swap                  // -- l1 a
 	jmp prim_apply
 
-
+*/
 prim compile_call
 	// ( a -- )
 	_update_Z        // save addr of last compiled instruction
-	movb $0xe8, (RegA)
-	inc RegA
-	_advance_cell RegA
-	sub RegA, ToS
-	mov ToS, -4(RegA)
+	movb $0xe8, (%edi)
+	inc %edi
+	_alloc_cell
+	sub %edi, %eax
+	mov %eax, -4(%edi)
 	_drop
-	mov RegA, var_H
+	mov %edi, var_H
 end
 
+prim suffix_immed, "__#"
+	// ( l -- )
+	call prim_find  // -- d
+	test %eax, %eax
+	jz 1f
+	_xt             // -- xt
+prim handle_immed
+	_popds %ebx     // --
+	jmp *%ebx
+1:
+	movl %ebp, %eax        // -- l
+	call prim_parse_number // n bool
+	test %eax, %eax
+	_drop
+	jz parse_fail
+end
+
+
+
 prim quote
+	// ( l -- xt )
+	movl %eax, %ebp // save string
+	call prim_find  // -- d
+	test %eax, %eax
+	jz parse_fail
+	_xt             // -- xt
+end
+
+/* prim quote
 	// ( l -- an )
-	mov ToS, RegE    // save string address
+	mov %eax, %ebp    // save string address
 	call prim_lookup_word  // -- a
-	test ToS, ToS
+	test %eax, %eax
 	stc  // something that can be tested to determine if we have an address or a number
 	jnz 1f
 	// lookup failed 
-	mov RegE, ToS
+	mov %ebp, %eax
 	call prim_parse_number // -- n bool
-	test ToS, ToS
+	test %eax, %eax
 	jz parse_fail
 	_drop
 1:
 end
+*/
 
 prim compile_quote
 	_update_Z
@@ -199,16 +290,10 @@ prim compile_quote
 	call prim_data
 end
 
-parse_fail:
-	mov RegE, ToS
-	_swap
-	mov $msg_not_found, ToS
-	jmp prim_fail
-
 prim apply
 	// ( a -- )
-	_popds RegB
-	jmp *RegB
+	_popds %ebx
+	jmp *%ebx
 
 prim exec
 	// ( l -- ? )
@@ -216,13 +301,13 @@ prim exec
 	jnc 1f           // carry flag not set - this is a literal, not a function
 	jmp prim_apply
 1:
-	mov RegE, ToS
+	mov %ebp, %eax
 	call prim_parse_number
-	test ToS, ToS
+	test %eax, %eax
 	jz parse_fail
 	_drop
 end
-	/* mov RegE, ToS
+	/* mov %ebp, %eax
 	_pushds $msg_tried_to_execute_a_literal
 	jmp prim_fail */
 
@@ -237,67 +322,64 @@ prim data
 	_pushds $0xb8            // -- n b   movb instruction
 	call prim_store_byte_inc // -- n
 	call prim_store_inc      // --
-	mov RegA, var_H
+	mov %edi, var_H
 end
 
 prim word_literal
 	// ( -- w )
 	_dup
-	mov ToRS, ToS    // fetch our return address (where string is stored)
-	movzbl (ToS), RegC  // fetch count
-	add RegC, ToRS   // update our return address by string length..
-	incl ToRS         // ...plus one for the length count.
+	mov (%esp), %eax    // fetch our return address (where string is stored)
+	movzbl (%eax), %ecx  // fetch count
+	add %ecx, (%esp)   // update our return address by string length..
+	incl (%esp)         // ...plus one for the length count.
 end
 
 prim literal_byte
 	_dup
-	pop ToS            // get our return address onto ToS
-	inc ToS            // skip the literal value
-	push ToS           // push the new return address
-	movzbl -1(ToS), ToS // fetch the literal we just skipped
+	pop %eax            // get our return address onto ToS
+	inc %eax            // skip the literal value
+	push %eax           // push the new return address
+	movzbl -1(%eax), %eax // fetch the literal we just skipped
 end
 
 
 #include "primitives.S"
 
 
-prim compile_else
+prim compile_else, "else", prim_handle_immed
 	// ( a1 -- a2 )
-	_immediate
-	movb $0xeb, (RegA)  // write a jmp instruction
-	inc RegA            // and increment RegA
-	_pushds RegA          // push RegA onto stack
+	movb $0xeb, (%edi)  // write a jmp instruction
+	inc %edi            // and increment %edi
+	_pushds %edi          // push %edi onto stack
 	_swap               // bring addr saved by compile_if to top
-	inc RegA            // leave a byte for the jump addr
+	inc %edi            // leave a byte for the jump addr
 	// fallthrough
-prim compile_endif
+prim compile_endif, "endif", prim_handle_immed
 	// ( a -- )
-	_immediate
 	_update_Z
-	mov ToS, RegB       // 
-	subl RegA, RegB     // calculate relative address
-	not RegB            // this is one less than %edi-%ebx, which should be correct
-	test $0x100, RegB   // TODO: what's this doing?! Testing if jmp is too far?
+	mov %eax, %ebx       // 
+	subl %edi, %ebx     // calculate relative address
+	not %ebx            // this is one less than %edi-%ebx, which should be correct
+	test $0x100, %ebx   // TODO: what's this doing?! Testing if jmp is too far?
 	jz 1f
-	mov $msg_failed_conditional, ToS
+	mov $msg_failed_conditional, %eax
 	_pushds $msg_failed_conditional
 	jmp prim_fail
 1:
-	movb %bl, (ToS)
-	mov RegA, var_H
+	movb %bl, (%eax)
+	mov %edi, var_H
 	_drop
 end
 
-prim compile_if
+prim compile_if, "if", prim_handle_immed
 	// ( -- a )
-	_immediate
 	_update_Z
 	_pushds $0x74adc085  // magic number: "test %eax, %eax ; _drop ; je $0"  TODO: only supports up to 127 byte jump!
 	stosl
-	mov RegA, ToS    // leave a copy of the target on the stack
-	movb Zero, (RegA)    // leave space for the offset
-	inc RegA
-	mov RegA, var_H  // update the free address
+	mov %edi, %eax    // leave a copy of the target on the stack
+	movb $0, (%edi)    // leave space for the offset
+	inc %edi
+	mov %edi, var_H  // update the free address
 end
 
 
@@ -311,15 +393,15 @@ prim parse_number
 	movl $10, %eax        // -- l 10
 prim base
 	// ( l n -- n bool )
-	push RegC
-	push RegA
-	push RegE
-	_popds RegE // -- l
-	_clear RegC
-	movb (RegA), %cl
-	inc RegA   // skip count
-	_clear ToS
-	mov RegE, %ebx
+	push %ecx
+	push %edi
+	push %ebp
+	_popds %ebp // -- l
+	_clear %ecx
+	movb (%edi), %cl
+	inc %edi   // skip count
+	_clear %eax
+	mov %ebp, %ebx
 1:
 	mull %ebx    // %eax * 10
 	call prim_fetch_byte_inc
@@ -331,39 +413,39 @@ prim base
 	_pushds $-1
 	jmp 3f
 2:
-	_clear ToS
+	_clear %eax
 3:
-	pop RegE
-	pop RegA
-	pop RegC
+	pop %ebp
+	pop %edi
+	pop %ecx
 end
 
 prim parse_hex
 	// ( l -- n bool )
-	push RegC
-	push RegA
-	_clear RegC
-	movb (RegA), %cl
+	push %ecx
+	push %edi
+	_clear %ecx
+	movb (%edi), %cl
 	dec %cl       // skip the
 	dec %cl       // 0x prefix
-	add $3, RegA  // ...
-	_clear ToS
+	add $3, %edi  // ...
+	_clear %eax
 1:
-	shl $4, ToS                        // -- n
+	shl $4, %eax                        // -- n
 	call prim_fetch_byte_inc           // -- n b
 	call prim_parse_hex_digit          // -- n n
 	jnc 3f    // carry not set = failure
 	call prim_add                      // -- n
 	loop 1b
-	pop RegA
-	pop RegC
+	pop %edi
+	pop %ecx
 	_dup
 	mov $-1, %eax
 	jmp 10001f
 3:
-	pop RegA
-	pop RegC
-	_clear ToS
+	pop %edi
+	pop %ecx
+	_clear %eax
 end
 
 
@@ -383,17 +465,17 @@ end
 
 prim extract_hex_digit
 	_dup
-	and $0xf, ToS
-	add $'0', ToS
-	cmp $'9', ToS
+	and $0xf, %eax
+	add $'0', %eax
+	cmp $'9', %eax
 	jbe 1f
-	add $39, ToS
+	add $39, %eax
 1:
 	_swap
-	shr $4, ToS
+	shr $4, %eax
 end
 
-prim emit_hex
+prim emit_hex, ".h"
 	push %ecx
 	_dup
 	mov $'0', %eax
@@ -414,37 +496,47 @@ prim emit_hex
 	pop %ecx
 end
 
-prim def
-	// ( l -- )  TODO should align to cell boundary with nop.
-	push RegA
+prim def, "__:"
+	// ( l -- )
+	movl var_D, %edx         // current head of dict
+	movl var_free_dict, %ebx // next free dict locn
+	movl %edx, (%ebx)        // store pointer to next entry
+	movl %edi, 4(%ebx)       // store heap address as xt
+	movl $prim_compile_call, 8(%ebx) // store default xh. TODO: use config var
+	movl (%eax), %eax   // l -- n
+	movl %eax, 12(%ebx)      // TODO: partial label only: use mm0 or xmm0
+	movl %ebx, var_D         // save new head of list
+	leal 16(%ebx), %ebx      // advance to free dict location
+	movl %ebx, var_free_dict // store free dict
+	_drop
+end
+/*
+	push %edi
 	_dup
-	mov 4(ToS), ToS // -- l id1
+	mov 4(%eax), %eax // -- l id1
 	_swap
-	mov (ToS), ToS  // -- id1 id0    // make an identifier
+	mov (%eax), %eax  // -- id1 id0    // make an identifier
 	call prim_D      // -- id1 id0 @d  // get dict address
 	call prim_fetch  // id1 id0 d
-	call prim_set_A  // -- id1 id0    // ...and set A
+	call prim_set_hp  // -- id1 id0    // ...and set A
 	call prim_store_inc   // -- id0 
 	call prim_store_inc   // -- 
 	call prim_H      // -- @h     // current heap address
 	call prim_fetch  // -- h
 	call prim_store_inc   // --       // store the code address
-	add $4, RegA     // --       // unused cell
-	mov RegA, var_D  // --       // save new dictionary address
-	pop RegA
-end
+	add $4, %edi     // --       // unused cell
+	mov %edi, var_D  // --       // save new dictionary address
+	pop %edi
+end */
 
-prim store_alloc_byte
+prim store_alloc_byte, "!b+"
 	call prim_store_byte_inc
-	mov RegA, var_H
+	mov %edi, var_H
 end
 
-prim emit
-	// uses real register names rather than macros because
-	// register usage of this function is OS defined and 
-	// will not change with different threading models
+prim emit, ".b"
 	push %ecx
-	push ToS  // ...except here!
+	push %eax
 	_clear %ebx
 	inc %ebx
 	mov %esp, %ecx   // we just pushed the char we wish to print, so our buffer is on the rstack
@@ -456,12 +548,22 @@ prim emit
 	pop %ecx
 end
 
+parse_fail:
+	mov %ebp, %eax
+	_swap
+	mov $msg_not_found, %eax
+prim fail
+	// ( w w -- )
+	call prim_warn
+	// Forth trick: clear the RS
+	movl var_rs0, %esp
+	// and back into the repl...
 prim repl
 	call prim_word
-	call prim_eval
+	call prim_eval2
 	jmp prim_repl
 
-prim emit_id
+prim emit_id, ".id"
 	// ( id -- )
 	push %ecx
 	push %edi
@@ -486,11 +588,6 @@ prim warn
 	call prim_emit
 end
 
-prim fail
-	// ( id id -- )
-	call prim_warn
-	_pushds $1
-	jmp prim_exit
 
 prim bye
 	xor %eax, %eax
@@ -501,11 +598,11 @@ prim exit
 	int $0x80
 
 
-variable D, end_dict  // dictionary
 variable H, heap      // heap addr
 variable K, 0         // last key read
 variable M, prim_repl // addr of main function
 variable Z, heap      // addr of last instruction compiled
+variable rs0, 0       // empty return stack pointer
 
 message not_found "Not a dictionary word or number: "
 message number_parse_fail "Invalid number format: "
@@ -513,85 +610,14 @@ message welcome "Cantilever v0.0\n"
 message tried_to_execute_a_literal "Tried to execute a non-function value: "
 message failed_conditional "Conditional code block too long\n"
 
+variable free_dict, 0 // free dictionary space
+variable D, dict           // dictionary
 
 heap:
 .space 1024
 
-.align 8,0
-dict:
-entry "", _start
-entry "dict",  prim_D
-entry "here",  prim_H
-entry "main",  prim_M
-entry "prev",  prim_Z
-
-// memory access
-entry "a",       prim_get_A
-entry "a!",       prim_set_A
-entry "@",        prim_fetch
-entry "@+",       prim_fetch_inc
-entry "@b",       prim_fetch_byte
-entry "@b+"       prim_fetch_byte_inc
-entry "!",        prim_store
-entry "!+",       prim_store_inc
-entry "!b",       prim_store_byte
-entry "!b+",      prim_store_byte_inc
-
-// word suffixes
-entry "__:",        prim_def
-entry "__'",        prim_compile_quote
-entry "__#",        prim_exec
-
-// data prefixes
-entry "0x__",       prim_parse_hex
-
-// stack manipulation
-entry "dup",      prim_dup
-entry "drop",     prim_drop
-entry "nip",      prim_nip
-entry "swap",     prim_swap
-
-// return stack manipulation
-entry "push",     prim_push
-entry "pop",      prim_pop
-
-// Arithmetic
-entry "+",        prim_add
-entry "-",        prim_subtract
-entry "1+",       prim_inc
-entry "1-",       prim_dec
-
-// logical and conditional
-entry "=",        prim_equals
-entry "<",        prim_less_than
-entry ">",        prim_greater_than
-entry "?;",       prim_cond_return
-entry "if",       prim_compile_if
-entry "else",     prim_compile_else
-entry "endif",    prim_compile_endif
-
-// IO
-entry ".",     prim_emit
-entry ".h",    prim_emit_hex
-entry ".id",   prim_emit_id
-
-// Literal data
-entry "_"     prim_compile_call
-entry "_w"     prim_word_literal
-
-// Misc
-entry "bye",      prim_bye
-entry "exit",     prim_exit
-entry "key",      prim_key
-entry "word",     prim_word
-entry "find",     prim_lookup_word
-entry "apply",    prim_apply
-entry "base",     prim_base
-
-// legacy
-entry "$",        prim_data
-entry ",",        prim_store_alloc_byte
-end_dict:
+.section .dictionary
+dictionary:
 
 
 
