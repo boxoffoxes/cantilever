@@ -1,0 +1,31 @@
+Garbage collecting a flat memory model
+
+
+Can we use a first-fit allocator? (a la Knuth)
+
+	[(10)          (10)|(3)   (3)|(n) ... (n)]
+
+How do we collect this?
+
+Where do we have to check for unused data?
+
+* data stack
+* return stack
+* dictionary
+* (inside data structures! ouch)
+
+The problem:
+  ~ we have a mixture of literals and addresses on the data-stack, so determinining which addresses are in use becomes non-trivial
+
+The trivial solutions:
+  ~ all values are 'boxed' (like Haskell)
+  ~ use a one-bit marker for literals (like OCaml)
+  ~ assume _everything_ on the stack is an address, and risk missing memory areas that can be cleaned up
+
+More complex solutions:
+  ~ keep a count of literals on the stack and only collect when we know the stack is literal-free (could be blocked for a very long time!)
+
+
+Idea:
+
+Every allocated value has to be on the stack at some point. There are a limited number of write-to-memory primitives. When a write-to-mem prim is called, it stores the address being worked with in an in-use table, along with the address to which it has been stored.

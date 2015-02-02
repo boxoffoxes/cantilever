@@ -1,0 +1,42 @@
+
+
+
+Primitives
+==========
+
+
+Stack manipulation
+------------------
+
+First let's define some basic operations over our two stacks.
+
+`swap :: b a -- a b`
+`drop :: a --`
+`nip  :: b a -- a`
+`push :: a -- / -r- a`
+`pop  :: -- a / a -r- `
+`dup  :: a -- a a`
+
+
+`+ :: Int Int -- Int`
+`- :: Int Int -- Int`
+`/ :: Int Int -- Int`
+`* :: Int Int -- Int`
+
+
+`=  :: a a -- Bool`
+`!= :: a a -- Bool`
+`<  :: a a -- Bool`
+`>  :: a a -- Bool`
+`<= :: a a -- Bool`
+`>= :: a a -- Bool`
+
+
+`and :: a a -- Bool`
+`or  :: a a -- Bool`
+`xor :: a a -- Bool`
+`not :: a -- a`
+
+
+`alloc :: Int -- Addr`
+
