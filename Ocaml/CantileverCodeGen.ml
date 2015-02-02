@@ -24,5 +24,5 @@ let rec compile_instr ins = match ins with
             end
     | i     -> failwith ("Could not compile: " ^ string_of_prim i)
 ;;
-let compile prog = List.map compile_instr prog ;;
+let compile opt prog = List.map compile_instr prog ;;
 

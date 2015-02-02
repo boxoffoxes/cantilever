@@ -109,6 +109,9 @@ let rec optimise ?(src=[]) prog = match prog with
     | Lit n  :: Add :: prog'  ->
             let i = sprintf "   addl $%ld, %%eax" n in
             optimise ~src:(i::src) prog'
+    | Lit n :: Sub :: prog' ->
+            let i = sprintf "   subl $%ld, %%eax" n in
+            optimise ~src:(i::src) prog'
 
     (* no optimisation *)
     | i :: prog' ->
@@ -119,7 +122,7 @@ let rec optimise ?(src=[]) prog = match prog with
 ;;
 
 let preamble = []
-let postamble = [
+(* let postamble = [
     ".globl cantilever_init" ;
     "cantilever_init:" ;
     "   pusha" ;
@@ -135,15 +138,20 @@ let postamble = [
     ".data" ;
     "c_stack:" ;
     "   .int 0" ;
-]
-let compile prog =
-    let asm =
-        List.concat [ preamble ; List.map compile_instr prog ; postamble]
+] *)
+let compile opt prog =
+    let compile = match opt with
+    | false -> List.map compile_instr
+    | true -> optimise ~src:[]
     in
+    let asm = compile prog in
+    (*List.concat [ preamble ; List.map compile_instr prog]  ; postamble]*)
     try
-        Hashtbl.find dict "main" ;
+        ignore ( Hashtbl.find dict "main" ) ;
         asm
-    with Not_found ->
+    with
+    | Not_found ->
         failwith "No 'main' function defined in source program"
     (*List.concat [ preamble ; optimise prog ; postamble]*)
+    | _ -> failwith "Arse"
 ;;

@@ -1,7 +1,7 @@
 type addr = int
 type prim =
     | Lit of int32 | Str of string
-    | Call of string | Tail of string | Jump of int | Ret
+    | Call of string | Tail of string | Jz of int | Jump of int | Ret
     | Imm of prim
     | Dup | Nip
     | Not

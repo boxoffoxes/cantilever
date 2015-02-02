@@ -5,8 +5,9 @@ let dictionary = Hashtbl.create 32 ;;
 
 type settings = {
     mutable compile : bool ;
-    mutable compiler : prim list -> string list ;
+    mutable compiler : bool -> prim list -> string list ;
     mutable interpreter : prim list -> string list ;
+    mutable optimise : bool ;
     mutable source : in_channel ;
     mutable dest : out_channel ;
 }
@@ -15,6 +16,7 @@ let settings = {
     compile = false ; 
     compiler = X86CodeGen.compile ;
     interpreter = Interpreter.eval ;
+    optimise = false ;
     source = stdin ;
     dest = stdout ;
 }
@@ -114,6 +116,7 @@ let rec parse_args args =
     | "-b" :: "null" :: args' ->
             settings.compiler <- CantileverCodeGen.compile ; parse_args args'
     | "-h" :: _ | "--help" :: _ -> usage () ;
+    | "-O" :: args' -> settings.optimise <- true ; parse_args args'
     | opt :: _ when opt.[0] = '-' -> usage () ;
     | file :: [] when String.length file > 0 -> 
             settings.source <- open_in file ;
@@ -126,11 +129,12 @@ let main =
     let prog = parse src in
     match settings.compile with 
     | true -> 
-        let asm  = settings.compiler prog in
+        let asm  = settings.compiler settings.optimise prog in
         List.iter print_endline asm ;
     | false ->
         let results = settings.interpreter prog in
         List.iter print_endline results ;
+
 ;;
 
 main

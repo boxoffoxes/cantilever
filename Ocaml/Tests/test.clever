@@ -1,5 +1,11 @@
 blah:
 	1 1+ ;
+wiffle:
+	blah ;
+const:
+	10 ;
+true: -1 ;
+false: 0 ;
 main:
 	1
 	2 ( 3 )
@@ -14,4 +20,6 @@ main:
 	1 2 <
 	2 1 <
 	blah
+	const 3 -
+	if true else false endif
 ;
