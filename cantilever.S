@@ -1,8 +1,8 @@
 #include <asm/unistd.h>
 #include <asm/mman.h>
 
-.set HEAP_SIZE, 128*1024*1024  # 128 meg
-
+.set HEAP_SIZE, 128*1024*1024  # 128M
+.set SCRATCH_SIZE, 16*1024     # 16k
 .set CELL_BITS, 2
 .set CELL_SIZE, (1<<CELL_BITS)
 .set DS_SIZE, (64*CELL_SIZE)
@@ -95,7 +95,7 @@ _start:
 	mov (%esp), %eax
 	mov %eax, var_argc
 	# argv
-	lea 4(%esp), %eax
+	lea CELL_SIZE(%esp), %eax
 	mov %eax, var_argv
 	# data stack
 	push $0
@@ -139,16 +139,25 @@ prim lit
 	lodsl
 	push %eax
 next
+prim minus_one "-1"
+	push $-1
+next
 prim zero "0"
 	push $0
 next
-prim minus_one "-1"
-	push $-1
+prim one "1"
+	push $1
+next
+prim cell
+	shll $CELL_BITS, (%esp)
 next
 
 # VM Registers ##############################
 prim dp_set, "dp!"
 	pop %edi
+next
+prim dsp, "dsp@"
+	push %esp
 next
 
 # System calls ##############################
@@ -205,16 +214,41 @@ next
 prim inc, "1+"
 	incl (%esp)
 next
+prim dec, "1-"
+	decl (%esp)
+next
 prim add, "+"
 	pop %eax
 	add %eax, (%esp)
 next
+prim udivmod  # int int -- int int
+	pop %ebx
+	pop %eax
+	// cdq  // sign-extend %eax into %edx
+	divl %ebx
+	push %eax
+	push %edx
+next
+prim divmod  # int int -- int int
+	pop %ebx
+	pop %eax
+	cdq  // sign-extend %eax into %edx
+	idivl %ebx
+	push %eax
+	push %edx
+next
+
 
 # Bitwise ops ###############################
 prim or
 	pop %eax
 	or %eax, (%esp)
 next
+prim and
+	pop %eax
+	and %eax, (%esp)
+next
+
 
 # Logical ops ###############################
 prim eq, "eq?" // a b -- bool
@@ -226,13 +260,39 @@ prim eq, "eq?" // a b -- bool
 	dec %ecx
 	push %ecx
 next
+prim le, "or-less?"
+	pop %eax
+	pop %edx
+	xor %ecx, %ecx
+	cmpl %eax, %edx
+	setg %cl
+	dec %ecx
+	push %ecx
+next
+prim ge, "or-more?"
+	pop %eax
+	pop %edx
+	xor %ecx, %ecx
+	cmpl %eax, %edx
+	setl %cl
+	dec %ecx
+	push %ecx
+next
+
+
 
 # Stack manipulation ########################
 prim dup
-	push (%eax)
+	push (%esp)
 next
 prim drop
 	pop %eax
+next
+prim swap
+	pop %eax
+	pop %edx
+	push %eax
+	push %edx
 next
 prim nip
 	pop %eax
@@ -248,6 +308,10 @@ next
 prim pop
 	poprs %eax
 	push %eax
+next
+prim stash
+	mov (%esp), %eax
+	pushrs %eax
 next
 
 # memory access #############################
@@ -273,10 +337,28 @@ prim zbranch
 	and %ecx, %eax        # %ecx is 0 if %edx is non-zero
 	add %eax, %esi
 next
+prim branch
+	add (%esi), %esi
+next
 prim call
 	pop %eax
 	jmp *(%eax)
 next
+
+# string handling ###########################
+prim lenz  // zstr -- int
+	pushrs %edi
+	xor %ecx, %ecx
+	xor %eax, %eax
+	dec %ecx
+	pop %edi
+	repne scasb
+	inc %ecx
+	not %ecx
+	push %ecx
+	poprs %edi
+next
+
 
 
 #################################################
@@ -290,10 +372,17 @@ word initialise_vm
 	.long get_brk_addr, dp_set
 	# allocate default heap
 	.long lit, HEAP_SIZE, set_heap_size
-	# create input buffer
 	# create scratchpad
-	.long lit, 16*1024, buffer, scratchpad_addr, set
-	# create anon code area
+	.long lit, SCRATCH_SIZE, buffer, scratchpad_addr, set
+	# are there any commandline args...
+	.long argc, get, dec, zbranch, JUMP(1f)
+	# ...yes, then open the first one
+	.long argv, get, one, cell, add, get
+	.long buffer_zfIle
+1:
+	.long lit, -17, lit, 10, udivmod, digit_to_char, putc, digit_to_char, putc
+	# create input buffer
+	# hand off control to the main loop
 	.long zero_exit
 end
 
@@ -322,6 +411,90 @@ word set_heap_size, "set-heap-size" # n --
 	.long heap_base_addr, add, set_brk_addr, drop
 end
 
+# basic io ##################################
+word write  # str len fh -- 
+	.long push
+	.long swap, pop
+	.long SysWrite, syscall3
+	.long drop # discard result
+end
+word put   # zstr len --
+	.long stdout, write
+end
+word putz # zstr --
+	.long dup, lenz
+	.long put
+end
+word putc  # c --
+	.long dsp, one, put
+	.long drop # drop on-stack buffer
+end
+
+# logical functions #########################
+word between, "between?"
+	.long push, push, dup
+	.long pop, ge, swap
+	.long pop, le, and
+end
+
+# number conversion #########################
+word digit_to_char, "digit-to-char" # n -- c
+	.long dup 
+	.long zero, lit, 9, between, zbranch, JUMP(1f)
+	.long lit, '0', add
+	.long branch, JUMP(2f)
+1:
+	.long lit, 'a'-10, add
+2:
+end
+word int_to_str, "int-to-zstr"  # n base -- zstr
+	.long stash
+	.long divmod, 
+end
+
+# filesystem access #########################
+constant stdin,  0
+constant stdout, 1
+constant stderr, 2
+
+# NOTE: these values are octal!
+constant ReadOnly,   0
+constant WriteOnly,  01101
+constant ReadWrite,  02202
+
+variable FileOpenFailed, 0
+variable CouldNotStatFile, 0
+
+word stat_fd "stat-fd"
+	.long scratchpad_addr, swap, SysStat, syscall2
+	.long system_error_reported, zbranch, JUMP(1f)
+	.long CouldNotStatFile, raise
+1:
+	.long scratchpad_addr
+end
+word st_size ".st_size"
+	.long lit, 5, cell, add
+end
+word file_length  "file-length" # fd -- len
+	.long stat_fd, st_size, get
+end
+
+
+word system_error_reported, "system-error-reported?"
+	.long lit, 255, or, minus_one, eq # zero on error
+end
+word zopen   # zstr mode -- fh
+	# syscall3 requires arg order: perms mode zstr callid
+	.long swap, push, push
+	.long lit, 0666, pop, pop
+	.long SysOpen, syscall3
+	.long dup, system_error_reported
+	.long zbranch, JUMP(1f)
+	.long drop, FileOpenFailed, raise
+1:
+end
+
+
 # memory-mapping ############################
 constant MapShared,     MAP_SHARED
 constant MapPrivate,    MAP_PRIVATE
@@ -342,10 +515,13 @@ word mmap  # fd flags prot len -- addr
 	#     offs  fd   flag prot len  addr
 	.long zero, pop, pop, pop, pop, zero, SysMmap, syscall6
 	# check return code
-	.long dup, lit, 255, or, minus_one, eq # zero on error
+	.long dup, system_error_reported
 	.long zbranch, JUMP(1f)
 	.long MmapFailed, raise
 1:
+end
+word mmap_fd "mmap-fd" # fd len -- addr
+	.long push, MapShared, ProtRead, pop, mmap
 end
 word munmap  # len addr -- 
 	.long SysMunmap, syscall2
@@ -360,6 +536,12 @@ word buffer  # len -- addr
 	.long pop, mmap
 end
 
+word buffer_zfIle "buffer-zfile" # zstr -- addr len fd
+	# TODO: not keeping track of the fd or filename
+	.long ReadOnly, zopen # , stash
+	.long dup, file_length, mmap_fd #, stash, mmap_fd
+	# .long pop, pop
+end
 
 #################################################
 # Exception handling
