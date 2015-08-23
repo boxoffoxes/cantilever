@@ -13,6 +13,9 @@
 # Macros
 #################################################
 
+
+#define JUMP(tgt) (tgt - .)
+
 # Structural macros #########################
 .macro header label, name, dict
 	.section .data
@@ -49,6 +52,11 @@
 .macro constant label, val, name
 	word \label, "\name", , doconst
 	.int \val
+.endm
+.macro variable label, val=0, name
+	constant \label, var_\label, "\name"
+	var_\label:
+	.long \val
 .endm
 
 .macro end
@@ -134,6 +142,9 @@ next
 prim zero "0"
 	push $0
 next
+prim minus_one "-1"
+	push $-1
+next
 
 # VM Registers ##############################
 prim dp_set, "dp!"
@@ -191,14 +202,80 @@ prim syscall6  # arg6 arg5 ... arg1 id -- result
 next
 
 # Arithmetic ################################
+prim inc, "1+"
+	incl (%esp)
+next
 prim add, "+"
 	pop %eax
 	add %eax, (%esp)
 next
 
+# Bitwise ops ###############################
+prim or
+	pop %eax
+	or %eax, (%esp)
+next
+
+# Logical ops ###############################
+prim eq, "eq?" // a b -- bool
+	pop %eax
+	pop %edx
+	xor %ecx, %ecx
+	cmpl %eax, %edx
+	setne %cl
+	dec %ecx
+	push %ecx
+next
+
 # Stack manipulation ########################
+prim dup
+	push (%eax)
+next
 prim drop
 	pop %eax
+next
+prim nip
+	pop %eax
+	pop %edx
+	push %eax
+next
+
+# Return stack ##############################
+prim push
+	pop %eax
+	pushrs %eax
+next
+prim pop
+	poprs %eax
+	push %eax
+next
+
+# memory access #############################
+prim get, "@"
+	pop %eax
+	push (%eax)
+next
+prim set, "!"
+	pop %eax
+	pop %edx
+	mov %edx, (%eax)
+next
+
+# program flow control ######################
+prim zbranch
+	lodsl                 # dist to branch
+	pop %edx              # boolean to test
+	xor %ecx, %ecx
+	sub $CELL_SIZE, %eax  # because lodsl increments %esi
+	test %edx, %edx       # bool is zero?
+	setnz %cl
+	dec %ecx
+	and %ecx, %eax        # %ecx is 0 if %edx is non-zero
+	add %eax, %esi
+next
+prim call
+	pop %eax
+	jmp *(%eax)
 next
 
 
@@ -215,6 +292,7 @@ word initialise_vm
 	.long lit, HEAP_SIZE, set_heap_size
 	# create input buffer
 	# create scratchpad
+	.long lit, 16*1024, buffer, scratchpad_addr, set
 	# create anon code area
 	.long zero_exit
 end
@@ -244,17 +322,68 @@ word set_heap_size, "set-heap-size" # n --
 	.long heap_base_addr, add, set_brk_addr, drop
 end
 
+# memory-mapping ############################
+constant MapShared,     MAP_SHARED
+constant MapPrivate,    MAP_PRIVATE
+constant MapAnonymous,  MAP_ANONYMOUS
+constant MapStack,      MAP_STACK
+
+constant ProtRead,      PROT_READ
+constant ProtWrite,     PROT_WRITE
+constant ProtExec,      PROT_EXEC
+constant ProtGrowsDown, PROT_GROWSDOWN
+constant ProtGrowsUp,   PROT_GROWSUP
+
+# exceptions
+variable MmapFailed, 0
+
+word mmap  # fd flags prot len -- addr
+	.long push, push, push, push
+	#     offs  fd   flag prot len  addr
+	.long zero, pop, pop, pop, pop, zero, SysMmap, syscall6
+	# check return code
+	.long dup, lit, 255, or, minus_one, eq # zero on error
+	.long zbranch, JUMP(1f)
+	.long MmapFailed, raise
+1:
+end
+word munmap  # len addr -- 
+	.long SysMunmap, syscall2
+	.long drop  # todo: error handling
+end
+
+word buffer  # len -- addr
+	.long push
+	.long minus_one                     # fd is ignored
+	.long MapPrivate, MapAnonymous, or  # set map options
+	.long ProtWrite, ProtRead, or       # set protections
+	.long pop, mmap
+end
+
+
+#################################################
+# Exception handling
+#################################################
+
+word raise
+	.long dup, get
+	.long dup, zbranch, JUMP(1f)
+	.long nip, call, done
+1:
+	.long lit, 42, exit
+end
+
+
 #################################################
 # Variables
 #################################################
 
-.data
+.bss
 .align CELL_SIZE
-var_argc:
-	.long 0
-var_argv:
-	.long 0
-var_ds0:
-	.long 0
-var_rs0:
-	.long 0
+variable argc
+variable argv
+
+variable ds0
+variable rs0
+
+variable scratchpad_addr,,"scratchpad-addr"
