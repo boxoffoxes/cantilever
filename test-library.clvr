@@ -1,0 +1,99 @@
+variable: test-library
+variable: failCount
+
+: red    s" [31m" puts ;
+: green  s" [32m" puts ;
+: blue   s" [34m" puts ;
+: normal s" [0m"  puts ;
+
+: test ( fun val -- )
+	swap call eq? if
+		'.' putc
+	else
+		red 'x' putc green
+		failCount @ 1+ failCount !
+	endif
+;
+
+variable: dotColumn
+
+: padStr ( str -- )
+	push
+	dotColumn @ pop @ -
+	1+ times spc repeat
+;
+
+macro: section:
+	'\n' compileString
+	test-library defword
+	' normal ,
+	' nl ,
+	' lit ,   current-def @ .label ,
+	' dup ,
+	' puts ,
+	' padStr ,
+	' green ,
+	current-def @ .label @  -- length of label
+		dotColumn @
+		max   dotColumn !  -- track the longest string
+	-- bufpos testHere !
+;
+
+: run-tests
+	s" Executable name: " puts
+	argv @ @ putz nl
+	test-library [ .cfa call ] each
+;
+
+: test-report
+	nl
+	failCount @
+	0 -> green s" *** All tests passed" puts normal nl drop ;;
+	1 -> red   s" *** " puts putn s"  test failed"  puts normal nl ;;
+	_ -> red   s" *** " puts putn s"  tests failed" puts normal nl ;;
+;
+
+: select-cfa-type  ( cfa -- c )
+	@
+	DoAddr      -> drop c: w ;;
+	DoDoesAddr  -> drop c: d ;;
+	DoConstAddr -> drop c: c ;;
+	_           -> drop c: p ;;
+;
+
+: show-cfa-type  ( cfa -- )
+	spc
+	c: [ putc
+	select-cfa-type putc
+	c: ] putc
+	spc
+;
+
+: profile-report  ( dict -- )
+	[ .label @ max ] push
+	0   words  peek each
+		macros pop  each
+	1+ dotColumn !
+
+	[ stash .cfa putx
+	peek  .cfa show-cfa-type
+	peek  .label dup puts padStr
+	pop   .xcount @ putn nl ] push
+
+	s" pol-profile.txt" WriteOnly open-out
+
+	s" === macros ============" puts nl
+	macros peek each
+	nl
+
+	s" === words =============" puts nl
+	words  pop  each
+	nl
+
+	closeOut
+;
+
+
+
+
+-- vim: ft=pol

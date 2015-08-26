@@ -1,0 +1,574 @@
+# 9  constant: '\t'
+# 10 constant: '\n'
+# 27 constant: '\e'
+
+: end-of-comment? '\n' eq? ;
+macro: -- ' end-of-comment? scan   drop  ;
+-- now we have comments. Yay!
+
+macro: c:
+	word
+	1 cell + @
+	compile-literal
+;
+
+: '"' c: " ;
+: ''' c: ' ;
+: '(' c: ( ;
+: ')' c: ) ;
+: '.' c: . ;
+: '-' c: - ;
+: '0' c: 0 ;
+: ':' c: : ;
+: '\' c: \ ;
+: ']' c: ] ;
+: 'b' c: b ;
+: 'e' c: e ;
+: 'n' c: n ;
+: 'o' c: o ;
+: 't' c: t ;
+: 'x' c: x ;
+: '}' c: } ;
+
+: spc 'spc' putc ;
+
+: before - ;
+: after + ;
+
+: true -1 ;
+: false 0 ;
+
+: 4* 2* 2* ;
+: cells cell ;
+
+: kiB  10 bits-up ;
+: MiB  20 bits-up ;
+: GiB  30 bits-up ;
+
+: div divmod drop ;
+: mod divmod nip ;
+
+: prev-cell here 1 cell before ;
+: next-cell here 1 cell after ;
+
+-- TODO: make it an error to redefine an exception!
+macro: exception:
+	create-variable
+;
+
+: compile-jump    ,   here   0 ,  ;   --   instr -- addr
+: compile-unconditional-jump   ' branch  compile-jump ;
+: compile-conditional-jump     ' zbranch compile-jump ;
+: jump-target   dup   here swap -   swap !  ;
+
+: inc-var   stash @ 1+   pop   !  ;
+: dec-var   stash @ 1-   pop   !  ;
+
+variable: if-nesting-depth
+macro: if   compile-conditional-jump   if-nesting-depth inc-var ;
+macro: else
+	compile-unconditional-jump push
+	jump-target
+	pop
+;
+macro: endif   jump-target   if-nesting-depth dec-var  ;
+
+-- convert between string types
+: s->z  --   str -- zstr len
+	dup 1 cell after
+	swap @
+;
+exception: ZStringTransformationNotImplemented
+: z->s  --   zstr len -- str
+	swap stash
+	1 cell before @
+	matches? if
+		pop 1 cell before
+	else
+		trash ZStringTransformationNotImplemented raise
+	endif
+;
+
+
+	-- TODO: modify c: to use Unicode code points instead of raw UTF-8
+	-- TODO: modify putc to support multibyte chars
+
+: bool -- ( n -- bool )
+	if true else false endif
+;
+
+-- : between? -- n a b -- bool
+-- 	--  a <= n <= b
+-- 	push push dup
+-- 	pop or-more? swap
+-- 	pop or-less? 
+-- 	and
+-- ;
+
+: debug
+	WordBuffer puts spc
+	stash putn
+	spc
+	'(' putc
+	'0' putc
+	'x' putc
+	peek putx
+	-- peek toEntry dup if
+	-- endif
+	peek 31 128 between? if
+		spc
+		''' putc
+		peek putc
+		''' putc
+	endif
+	')' putc
+	pop
+	report
+;
+
+-- macro: : -- replace with debugging version
+	-- word words
+	-- here debug drop
+	-- define
+-- ;
+
+: while-word  --  S ( word -> bool ) -> T
+	-- consume words until the passed function
+	-- returns false
+	push
+	word peek call if 
+		pop
+		tail: while-word
+	else
+		trash
+	endif
+;
+
+: _nested-comment   --  n word -- n bool
+	1 cell after @ 
+	stash ')' eq? if
+		1 -
+		trash
+	else
+		pop '(' eq? if 1 + endif
+	endif
+	dup bool
+;
+
+macro: (
+	1
+	' _nested-comment while-word
+	drop
+;
+
+: scratchpad
+	scratchpad-addr @
+;
+
+-- let's implement pattern matching
+variable: pattern-match-depth
+variable: rs-usage
+
+: unbalanced-rs-error
+	current-def @ .label 
+	UnbalancedRSInBranch 2 warning 
+;
+macro: ->
+	' matches? ,
+	compile-conditional-jump
+	rs-usage @
+	pattern-match-depth inc-var
+;
+macro: ;;
+	' ; ,
+	-- ' ; ,
+	rs-usage @  if   unbalanced-rs-error   endif
+	rs-usage !
+	jump-target
+	pattern-match-depth dec-var
+;
+-- macro: _ ' dup , ;
+macro: _
+	word drop   -- consume ->
+	scratchpad  -- somewhere for jump-target to write to
+	-- this is the last part of the match, so we don't keep rs-usage. Doing so 
+	-- would generate spurious unbalanced-rs-error exceptions
+	0 -- rs-usage @
+	pattern-match-depth inc-var -- because we've dumped the ->
+;
+
+: base-literal  ( n -> n )
+	word swap base
+	true -> drop ;;
+	false ->
+		drop drop
+		WordBuffer
+		NumParse 2 compile-error
+	;;
+;
+
+macro: bin:  2 base-literal compile-literal ;
+macro: oct:  8 base-literal compile-literal ;
+macro: hex: 16 base-literal compile-literal ;
+
+: nextEntry @ ;
+
+
+variable: stringTerminator
+
+: handleStringEsc ( c -- )
+	'e' -> drop '\e' ;;
+	'n' -> drop '\n' ;;
+	't' -> drop '\t' ;;
+	'0' -> drop   0  ;;
+	stringTerminator @
+	    ->           ;;
+	'\' ->           ;;
+	_   -> -- Invalid escape. TODO: proper error handling!
+		-- s" \\x" dup   1 cell after   1+  ! -- addr of x in preceding string
+		WordBuffer InvalidEsc 2 compile-error 
+	;;
+;
+
+: _string  ( char bool -- )
+	-- boolean indicates whether the next character is 
+	-- escaped
+	if  ( escape chars. )
+		key handleStringEsc ,c false _string
+	else
+		key 
+		stringTerminator @ -> drop ;;
+		'\'  -> drop  true _string ;;
+		_    -> ,c   false _string ;;
+	endif
+;
+
+: compileZString ( char -- zstr )
+	stringTerminator !
+	here
+	false _string
+	here 1+ align
+	0 , 0 ,
+	dp!
+;
+
+: compileString ( char -- str )
+	here push
+	0 ,
+	compileZString
+	lenz peek !
+	pop
+;
+
+: compileInlineString ( char -- )
+	compile-unconditional-jump
+	swap compileString
+	swap jump-target
+	compile-literal
+;
+
+macro: s"
+	'"' compileInlineString
+;
+
+macro: z"
+	compile-unconditional-jump
+	'"' compileZString
+	swap jump-target
+	compile-literal
+;
+
+-- empty-string constant
+: "" s" " ;
+
+-- dictionary accessor convenience functions
+: cfa->entry ( cfa -- entry )
+	3 cells before
+;
+: cfa->label ( cfa -- str )
+	2 cells before
+;
+: cfa->pfa 1 cell after ;
+
+
+-- Compile-time execution support
+
+variable: close-bracket-behaviour
+
+: unmatchedBracket s" Unmatched ]" 1 compile-error ;
+
+: startImmedCodeBlock  ( -- addr )
+	here 
+	anon-code-area-addr @ dp!
+	DoAddr ,
+;
+: endImmedCodeBlock  ( oldDp -- ?? )
+	' ; ,
+	dp! anon-code-area-addr @ call
+;
+macro: #[  (  -- oldDp prevBehav )
+	-- s" #[ " puts report
+	close-bracket-behaviour @
+	' endImmedCodeBlock close-bracket-behaviour !
+	startImmedCodeBlock swap
+	-- report
+;
+
+-- anonymous function support
+: endAnonCodeBlock ( lambda jaddr -- )
+	' ; ,
+	jump-target
+	compile-literal
+;
+macro: #again
+	anon-code-area-addr @ call
+;
+macro: [  ( -- lambda jaddr prevBehav )
+	-- s" [ " puts report
+	compile-unconditional-jump
+	here swap
+	DoAddr ,
+	close-bracket-behaviour @
+	' endAnonCodeBlock close-bracket-behaviour !
+	-- report
+;
+
+-- generic code block closing function
+macro: ]  ( prevBehav -- )
+	-- report
+	close-bracket-behaviour @ push
+	close-bracket-behaviour !
+	pop call
+	-- report c: ] putc nl nl
+;
+
+: [] [ ] ;
+
+#[ ' unmatchedBracket close-bracket-behaviour ! ]
+
+
+macro: times
+	' push ,
+	here
+	' peek ,
+	compile-conditional-jump
+	' pop ,
+	' 1- ,
+	' push ,
+	swap
+;
+
+macro: forever
+	-1 compile-literal
+	' push ,
+	here
+	' peek , -- ' debug ,
+	compile-conditional-jump
+	swap
+;
+
+macro: repeat
+	next-cell -
+	compile-unconditional-jump
+	!
+	jump-target
+	' trash ,
+;
+
+: seeEntry ( entry -- )
+	'(' putc .label puts ')' putc nl ;
+	
+	findWord dup if
+		':' putc spc 'spc'
+	else
+		'(' putc ')'
+	endif
+	pop .label puts
+	putc nl
+;
+
+: seeWords  words  ' seeEntry each ;
+: seeMacros macros ' seeEntry each ;
+
+: see ( cfa -- )
+	cfa->entry seeEntry
+;
+
+: allot ( n -- )
+	here + align dp!
+;
+
+: not-imlemented
+	s"  declared but not implemented."
+	peek 5 cells before .label
+	2 compile-error
+;
+
+macro: declare:
+	-- allow forward declarations. Provide an implementation
+	-- using 'implements:'
+	create-word
+	' not-imlemented ,
+	' ; ,
+;
+
+: implements
+	-- Warning: complex behaviour! takes the CFA at its return address
+	-- and re-writes the PF with the function in ToS
+	pop dup 1 cell after push -- skip the next compiled word
+	@ 1 cell after stash !
+	' ; pop 1 cell after !   -- 
+;
+
+macro: prior: 
+	-- compile a word, ignoring the currently in-progress definition
+	word dup current-def @ find
+	0 -> drop NotFound 2 compile-error ;;
+	_ -> .cfa , drop ;;
+;
+macro: suppress-macro:
+	word dup words find
+	0 -> drop NotFound 2 compile-error ;;
+	_ -> .cfa , drop ;;
+;
+
+
+: close ( fh -- )
+	prior: close
+	0 -> drop ;;
+	_ -> drop s" Closing file failed" 1 error ;;
+;
+
+-- RS safety checks ------------------------------------------
+
+macro: stash
+	rs-usage inc-var
+	' suppress-macro: stash ,
+;
+macro: push
+	rs-usage inc-var
+	' suppress-macro: push ,
+;
+macro: pop
+	rs-usage dec-var
+	' suppress-macro: pop ,
+;
+macro: trash
+	rs-usage dec-var
+	' suppress-macro: trash ,
+;
+
+: _done
+	-- this gives us some static error checking on RS usage and nesting of conditionals
+	rs-usage @ if 
+		current-def @ .label
+		s" Unbalanced RS use in definition of " 2 warning
+		0 rs-usage !
+	endif
+	if-nesting-depth @ if
+		current-def @ .label
+		s" Unmatched if or endif in definition of " 2 warning
+		0 if-nesting-depth !
+	endif
+	pattern-match-depth @ if
+		current-def @ .label
+		s" Unmatched -> or ;; in definition of " 2 warning
+		0 pattern-match-depth !
+	endif
+	' ; ,
+; 
+
+macro: ;   _done ;
+
+-- structures
+macro: struct:
+	create-word
+	' here ,
+	' lit ,
+	here push 0 ,
+	' allot ,
+	' suppress-macro: ; ,
+	pop
+	0
+	-- s" struct: " puts
+	-- dup putn 
+;
+macro: end
+	-- s" link" findWord putx
+	-- dup putn spc
+	-- nl
+	align swap !
+;
+
+: _field  ( n1 n2 -- n )
+	create-word
+	swap dup compile-literal
+	' + ,
+	' suppress-macro: ; ,
+	+
+	-- spc dup putn
+;
+macro: cell: ( tot n -- tot' )
+	1 cell _field
+;
+macro: field: _field ;
+
+macro: sizeof: ( -- n )
+	word findWord .pfa 2 cells after @ align compile-literal
+;
+
+: _see-data-stack 
+	s"  ds(" puts
+
+	dsp@ push
+	ds0 @
+	dup
+	pop - CellBits bits-down 
+	dup putn
+	s" ): " puts
+	times
+		1 cell before
+		stash @ stash putn
+		s"  [36m0x" puts 
+		peek putx
+		peek 32 128 between? if
+			spc s" [35m'" puts
+			peek putc
+			''' putc
+		endif
+		s" [0m  " puts
+		spc
+		trash pop
+	repeat
+	drop
+	nl
+;
+
+macro: see-data-stack
+	current-def @ .label compile-literal
+	' puts ,
+	':' compile-literal
+	' putc ,
+	here current-def @ .pfa - CellBits bits-down compile-literal
+	' putn ,
+	' spc ,
+	' _see-data-stack ,
+;
+
+
+: cons ( elem list -- )
+	-- Warning: this presumes the first cell of elem
+	-- is reserved for a list pointer
+	stash @ ( list-head )  swap  stash !  -- store prev head in link fld of elem
+	pop ( elem )   pop ( list )   !       -- store addr of elem in list
+;
+
+: uncons  ( list -- elem )
+	-- Destructively remove the first elem of list
+	dup @ ( list elem )
+	push  ( list )
+	dup @ @ swap !
+	pop
+;
+
+-- vim:ft=pol
