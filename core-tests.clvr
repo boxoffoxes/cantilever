@@ -239,7 +239,7 @@ section: Comments
 ;
 section: FileIO
 	[ s" /etc/fstab" ReadOnly open ] 3 test
-	[ s" /tmp/polout" WriteOnly open ] 4 test
+	[ s" /tmp/cantilever_out" WriteOnly open ] 4 test
 	[ 4 file-length ] 0 test
 
 	out-channel @
@@ -368,4 +368,4 @@ section: Tail-calls
 # test-report
 # profile-report
 
--- vim:ft=pol
+-- vim:ft=cantilever

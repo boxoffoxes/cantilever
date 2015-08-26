@@ -70,6 +70,9 @@ macro: section:
 ;
 
 : profile-report  ( dict -- )
+	ProfilingEnabled
+	false -> drop ;;
+	drop
 	[ .label @ max ] push
 	0   words  peek each
 		macros pop  each
@@ -80,7 +83,7 @@ macro: section:
 	peek  .label dup puts padStr
 	pop   .xcount @ putn nl ] push
 
-	s" pol-profile.txt" WriteOnly open-out
+	s" clvr-profile.txt" WriteOnly open-out
 
 	s" === macros ============" puts nl
 	macros peek each

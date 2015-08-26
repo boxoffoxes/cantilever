@@ -571,4 +571,4 @@ macro: see-data-stack
 	pop
 ;
 
--- vim:ft=pol
+-- vim:ft=cantilever

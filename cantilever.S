@@ -7,7 +7,8 @@
 
 # Useful values ######################################
 .set HEAP_SIZE, 128*1024*1024  # 128 meg
-.set BUFFER_SIZE, 1024
+.set SCRATCH_SIZE, 16*1024     # 16k
+.set BUFFER_SIZE,   4*1024     #  4k
 .set WORD_BUFFER_SIZE, 256
 .set CELL_BITS, 2
 .set CELL_SIZE, (1<<CELL_BITS)
@@ -1133,14 +1134,20 @@ word bufferFile "buffer-file"  # str -- addr len fd
 end
 
 word initialiseVM
-	# todo:
-	# create input buffer this way
-	# set up ds and rs
-	# populate ds0 and rs0
-	.long getBrkAddr, dpSet       # initialise dict pointer
+	# initialise the dictionary pointer
+	.long getBrkAddr, dpSet
+	# allocate default heap
 	.long lit, HEAP_SIZE, setHeapSize
-	.long lit, 16 * 1024, buffer, scratchpadAddr, set
-	.long lit, 16 * 1024, buffer, anonCodeAreaAddr, set
+	# create scratchpad
+	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
+	# create anon code area
+	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
+	# are there any commandline args...
+	.long argc, get, dec, zbranch, JUMP(1f)
+	# ...yes, then open the first one
+	.long argv, get, one, cell, add, get
+	.long bufferZFile
+1:
 end
 
 
