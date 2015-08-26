@@ -1,0 +1,22 @@
+variable: decimal-places
+variable: fixed-point-scaling
+
+
+: split-decimal ( d -- f i )
+	fixed-point-scaling @ divmod
+;
+
+: putd  ( d -- )
+	putsign
+	split-decimal swap
+	putn   '.' putc   putn
+;
+
+
+#[
+	1000 fixed-point-scaling !
+	-12345 putd nl
+]
+
+
+-- vim:ft=cantilever
