@@ -1,0 +1,51 @@
+-- vim: ft=cantilever
+#[ ds-depth putx nl ]
+: fibr
+	-- Recursive version. Executes in 17.98 sec on an i7!
+	-- Executes in 105.93 on a C-70
+	0 -> 1+ ;;
+	1 -> ;;
+	_ ->
+		push
+		peek 2 - fibr
+		pop  1 - fibr +
+	;;
+;
+
+: nextFib  ( n0 n1 -- n1 n2 )
+	stash + pop swap
+;
+
+: fibi  ( n -- int )
+	-- iterative version. Executes in 0.0 sec on an i7
+	-- Executes in 0.0 sec on a C-70
+	push
+	1 1 pop times
+		nextFib
+	repeat
+	drop
+;
+
+: fibtail ( n0 n1 n -- n1 n2 n-1 )
+	-- Iterative, but using recursion as the iteration mechanism
+	0 -> drop drop ;;
+	_ ->
+		1- push nextFib
+		pop fibtail
+	;;
+;
+
+: fibt  ( n -- int )
+	push
+	1 1 pop fibtail
+;
+
+: fib fibr ;
+
+: test
+	40 fib putn nl
+;
+
+# test
+
+#[ ds-depth putx nl ]

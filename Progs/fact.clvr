@@ -1,0 +1,14 @@
+-- vim: ft=cantilever
+
+: fact  ( n -- n! )
+	dup -1 or-less? if
+		s" Factorial of negative number" 1 error
+	endif
+	0 -> drop 1 ;;
+	1 -> drop 1 ;;
+	_ -> dup 1- fact * ;;
+;
+
+-- #[ -10 fact ]
+#[ 12 fact putn nl ]
+

@@ -1,0 +1,49 @@
+-- vim: ft=cantilever
+
+: _= ( n radix -- )
+	s" \t\e[32m = " puts
+	dup 10 = if
+		drop putn
+	else
+		putnumber
+	endif
+	s" \e[0m" puts
+	nl
+;
+
+: =b   2 _= ;
+: =o   8 _= ;
+: =   10 _= ;
+: =h  16 _= ;
+
+: ?b  dup  2 _= ;
+: ?o  dup  8 _= ;
+: ?   dup 10 _= ;
+: ?h  dup 16 _= ;
+
+: _? ( n radix -- )
+	push dup pop _=
+;
+
+: b:  2 literal ;
+: o:  8 literal ;
+: h: 16 literal ;
+
+: cancel
+	ds0 @ dsp!
+	reset
+;
+
+: calculator
+	forever
+		word wordOrNumber if call endif
+	repeat
+;
+
+: install
+	( replace the interpreter ) 
+	' calculator interpreter !
+;
+
+# install
+# reset

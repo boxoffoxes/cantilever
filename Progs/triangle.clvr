@@ -1,0 +1,36 @@
+vim:ft=cantilever
+
+: _tri ( r n -- t )
+	0 -> drop ;;
+	_ -> stash + pop 1- tail: _tri ;;
+;
+
+-- Calculate the (n)th triangle number
+: tri ( n -- t )
+	0 swap _tri
+;
+
+: _sum-of-tri ( a n -- sum )
+	0 -> drop ;;
+	_ -> stash tri + pop 1- tail: _sum-of-tri ;;
+;
+: sum-of-tri ( n -- e )
+	0 swap _sum-of-tri
+;
+
+: number-of-expansions-for-gen ( n -- n )
+	sum-of-tri
+;
+
+: approx-number-of-binds-for-gen ( n -- n )
+	number-of-expansions-for-gen   13 *  -- prepare & expand
+;
+
+#[
+	s" Gen5:  " puts
+		5  approx-number-of-binds-for-gen putn nl
+	s" Gen10: " puts
+		10 approx-number-of-binds-for-gen putn nl
+	s" Gen15: " puts
+		15 approx-number-of-binds-for-gen putn nl
+]

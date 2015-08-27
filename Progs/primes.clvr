@@ -1,0 +1,40 @@
+
+
+: populate-grid  ( max n -- )
+	stash -> drop trash ;;
+	_     ->
+		peek , pop 1+
+		tail: populate-grid
+	;;
+;
+
+
+
+-- after testing x you only have to start from x² 
+-- and zero in increments of x
+
+: sieve  ( n -- )
+	dup cells buffer stash
+	peek populate-grid
+	0 peek !  -- one is not prime
+	
+	trash
+	-- todo: unmap buffer
+;
+
+
+
+: is-factor?  ( n f -- bool )
+	-- return true if f is a factor of n
+	mod bool not
+;
+
+: is-prime? 
+	2 -> drop true ;;
+	_ -> 
+		
+	;;
+;
+
+
+-- vim:ft=cantilever
