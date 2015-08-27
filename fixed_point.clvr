@@ -1,20 +1,38 @@
 variable: decimal-places
 variable: fixed-point-scaling
 
-
-: split-decimal ( d -- f i )
-	fixed-point-scaling @ divmod
+: _power  ( a x y -- a )
+	0 -> drop drop ;;
+	_ -> push stash *  pop pop 1- tail: _power ;;
+;
+: power   ( x y -- n )
+	push push 1 pop pop _power
 ;
 
+: fixed-point  ( n -- )
+	dup decimal-places !
+	10 swap power  fixed-point-scaling  !
+;
+
+
+: split-decimal ( d -- f i )
+	fixed-point-scaling @   divmod   fixed-point-scaling @  +
+;
+
+: _putd  ( 0 c ... -- )
+	0 -> drop ;;
+	_ -> putc tail: _putd ;;
+;
 : putd  ( d -- )
+	-- TODO : fails to include leading zeroes on fractional part
 	putsign
-	split-decimal swap
-	putn   '.' putc   putn
+	split-decimal   swap putn   '.' putc
+	10 decompose drop _putd
 ;
 
 
 #[
-	1000 fixed-point-scaling !
+	2 fixed-point
 	-12345 putd nl
 ]
 

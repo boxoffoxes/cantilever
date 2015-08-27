@@ -957,18 +957,21 @@ word digit_to_char, "digit-to-char" # n -- c
 	.long lit, 'a'-10, add
 2:
 end
-word putsign     # n -- u
-	.long dup, lit, (1<<(CELL_SIZE*8-1)), and, zbranch, JUMP(1f)
-	.long neg, lit, '-', putc
-1:
-end
-word putnumber   # n base --
+word decompose  # n base -- 0 c ... 
 	.long push, zero, swap
 1:
 	.long peek, divmod, digit_to_char, swap
 	.long dup, zbranch, JUMP(2f), branch, JUMP(1b)
 2:
 	.long drop, trash
+end
+word putsign     # n -- u
+	.long dup, lit, (1<<(CELL_SIZE*8-1)), and, zbranch, JUMP(1f)
+	.long neg, lit, '-', putc
+1:
+end
+word putnumber   # n base --
+	.long decompose
 3:
 	.long putc, dup, zbranch, JUMP(4f), branch, JUMP(3b)
 4:
