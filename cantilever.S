@@ -520,6 +520,14 @@ prim mul, "*"  // int int -- int
 	// TODO: check for overflow
 next
 
+prim udivmod  # int int -- int int
+	pop %ebx
+	pop %eax
+	xor %edx, %edx
+	divl %ebx
+	push %eax
+	push %edx
+next
 prim divmod  # int int -- int int
 	pop %ebx
 	pop %eax
@@ -702,11 +710,22 @@ prim get, "@"
 	pop %eax
 	push (%eax)
 next
+prim getByte, "@b"
+	xor %eax, %eax
+	pop %edx
+	mov (%edx), %al
+	push %eax
+next
 
 prim set "!" // int addr -- 
 	pop %eax
 	pop %edx
 	mov %edx, (%eax)
+next
+prim setByte "!b" // int addr -- 
+	pop %eax
+	pop %edx
+	mov %dl, (%eax)
 next
 
 prim here
@@ -907,6 +926,17 @@ next
 
 constant spc, 32, "'spc'"
 
+word scanz # zstr pred -- addr
+	.long push, dec
+1:
+	.long inc, dup, getByte
+	.long dup, zbranch, JUMP(2f)  # reached the NULL terminator at the end of the string
+	.long peek, call, zbranch, JUMP(1b)
+	.long dup
+2:
+	.long nip, trash
+end
+
 word scan  # pred -- c
 	# read chars from in-channel until pred returns true
 	.long stash  # leave pred on the stack to give drop something to work on
@@ -960,7 +990,7 @@ end
 word decompose  # n base -- 0 c ... 
 	.long push, zero, swap
 1:
-	.long peek, divmod, digit_to_char, swap
+	.long peek, udivmod, digit_to_char, swap
 	.long dup, zbranch, JUMP(2f), branch, JUMP(1b)
 2:
 	.long drop, trash

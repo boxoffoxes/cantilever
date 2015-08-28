@@ -30,10 +30,44 @@ variable: fixed-point-scaling
 	10 decompose drop _putd
 ;
 
+exception: DecimalParseError
+
+variable: int-portion
+variable: frac-portion
+variable: frac-scale
+: decimal-int-digit
+	'.' -> drop true ;;
+	dup '0' '9' between? if
+		'0' - 
+		int-portion @   10 * +   int-portion !
+	else
+		DecimalParseError raise
+	endif
+	false
+;
+: decimal-frac-digit
+	dup '0' '9' between? if
+		'0' -
+		frac-scale @   10 div  dup   frac-scale !
+		*   frac-portion @   +   frac-portion !
+	else
+		DecimalParseError raise
+	endif
+	false
+;
+
+: decimal  ( str -- d )
+	0 int-portion !   0 frac-portion !   fixed-point-scaling @  frac-scale !
+	1 cell after
+	' decimal-int-digit scanz   1+   ' decimal-frac-digit scanz
+	int-portion @  fixed-point-scaling @  *
+	frac-portion @  +
+;
 
 #[
-	2 fixed-point
-	-12345 putd nl
+	5 fixed-point
+	s" 123.45" decimal putd nl
+	-12345 2 * putd nl
 ]
 
 

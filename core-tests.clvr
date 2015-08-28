@@ -256,6 +256,8 @@ section: Strings
 	[ s" blah"  lens ] 4 test
 	[ s" \"\""  lens ] 2 test
 	[ "" lens ] 0 test
+	[ z" hello world"     [ '.'   eq? ] scanz            ] false test
+	[ z" hello world" dup [ 'spc' eq? ] scanz   5 -  eq? ] true  test
 ;
 section: Null-terminated strings
 	[ s" hello" 1 cell after lenz ] 5 test
