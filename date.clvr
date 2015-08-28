@@ -1,0 +1,35 @@
+-- vim: ft=cantilever
+
+: basez  ( zstr base -- int addr? )
+	-- parse the leading numeric portion of zstr in specified base
+	-- if the whole string is consumed then addr? is zero, else 
+	-- addr of first unparsed char.
+	push 
+	dup @b digit
+	dup 0 peek between? not if 
+		swap return
+	endif
+;
+
+
+variable: time-hour
+variable: time-minute
+variable: time-second
+
+: hour  ( zstr -- time str' )
+	10 base  
+;
+
+
+: time  ( str -- time )
+	
+;
+
+
+
+variable: date-year
+variable: date-month
+variable: date-day
+
+
+

@@ -414,6 +414,17 @@ prim word  // -- str
 	push $wordbuffer
 next
 
+prim digit  // char -- int
+	pop %eax
+	cmpb $'9', %al
+	jbe 1f
+	andb $0xdf, %al // make letters upper-case
+	cmpb $'A', %al
+	jb 2f   // error
+	subb $7, %al   // compact 
+1:
+	subb $'0', %al
+next
 
 # Logical prims ######################################
 
