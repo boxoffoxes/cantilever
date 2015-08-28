@@ -202,15 +202,6 @@ _eof:
 next
 
 .align CELL_SIZE
-_emit:
-	mov $__NR_write, %eax
-	mov var_outChannel, %ebx // 1 == stdout
-	lea 4(%esp), %ecx // The former ToS is our buffer
-	mov $1, %edx   // no of chars to write
-	int $0x80
-	ret
-
-.align CELL_SIZE
 _word:  // copy the next word into wordbuffer
 	// skip whitespace
 	call _key
