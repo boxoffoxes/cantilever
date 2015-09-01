@@ -950,7 +950,6 @@ next
 
 .align CELL_SIZE
 _decimal:
-	
 jmp 2b
 .align CELL_SIZE
 _dt:  # handles both date and time parsing
@@ -960,7 +959,6 @@ _dt:  # handles both date and time parsing
 	pushrs %eax
 	pushrs %ecx
 	call _natural
-	# todo: test for :
 	poprs %ecx
 	inc %esi
 	mull %ecx
