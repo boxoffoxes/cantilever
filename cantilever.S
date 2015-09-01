@@ -254,24 +254,24 @@ ret
 	mov $-1, %cl
 ret
 
-/* .align CELL_SIZE
-_char_to_number:
-	// expects char in %dl and base in %bl. Leaves number in %dl
-	// in the event of failure zeroes the base in %ebx
-	cmpb $'9', %dl
-	jbe 1f
-	andb $0xdf, %dl // make letters upper-case
-	cmpb $'A', %dl
-	jb 2f   // error
-	subb $7, %dl   // compact 
+.align CELL_SIZE
+_natural:
+	# parse a natural
+	# expects string pointed to by %esi and base in %bl
+	xor %eax, %eax
 1:
-	subb $'0', %dl
-	cmpb %bl, %dl
-	jae 2f  // error
-ret
+	movzbl (%esi), %ecx
+	call _char_to_number
+	cmp %cl, %bl
+	jb 2f
+	test %cl, %cl
+	js 2f
+	mull %ebx
+	add %ecx, %eax
+	inc %esi
+	jmp 1b
 2:
-	xor %ebx, %ebx
-ret */
+ret
 
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
@@ -888,74 +888,89 @@ prim lenz  // zstr -- int
 next
 
 prim basez  # zstr radix -- int remainder?
-	pushrs %esi
 	xor %eax, %eax
-	pop %ebx
-	pop %esi
-
+	pushrs %esi
+	pop %ebx  # base goes in %bl
+	pop %esi  # zstr in %esi
+	# check for negative number
 	movb (%esi), %al
 	cmpb $'-', %al
 	sete %al
+	addl %eax, %esi  # increment zstr if negative
 	pushrs %eax
-	jne 1f
-	xor %eax, %eax
-	inc %esi
-1:
-	movzbl (%esi), %ecx
-	call _char_to_number
-	cmp %cl, %bl
-	jb 2f
-	test %cl, %cl
-	js 2f
-	mull %ebx
-	add %ecx, %eax
-	inc %esi
-	jmp 1b
-2:
+	call _natural
 	poprs %edx
 	test %edx, %edx
 	jz 3f
 	neg %eax
-3:
+3:	# Push the natural, and the position we got to
 	push %eax
 	push %esi
 	poprs %esi
 next
-/* prim base  // str radix -- int bool
-	pushrs %edi
-	pop %ebx  // radix
-	pop %edi  // str
+
+prim number  # zstr -- int bool
+	# see if zstr conforms to one of the supported 
+	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
-	mov (%edi), %ecx
-	lea 4(%edi), %edi
-	movb (%edi), %al
-	cmpb $'-', %al // check for neg
+	pushrs %esi
+	movl $10, %ebx  # base goes in %bl
+	pop %esi  # zstr in %esi
+	# check for negative number
+	movb (%esi), %al
+	cmpb $'-', %al
 	sete %al
-	pushrs %eax 
-	jne 1f
-	xor %eax, %eax
-	inc %edi
-	dec %ecx
-1:
-	mull %ebx
-	movzbl (%edi), %edx
-	inc %edi
-	call _char_to_number
-	add %edx, %eax
-	// TODO CHECK INT OVERFLOW
-	loopnz 1b
-	poprs %edx // negative?
+	addl %eax, %esi  # increment zstr if negative
+	pushrs %eax
+	call _natural
+	poprs %edx
 	test %edx, %edx
-	jz 2f // not negative
+	jz 1f
 	neg %eax
+1:	# Test for supported number formats
+	xor %edx, %edx
+	movb (%esi), %dl
+	movb 3(%esi), %dh
+//	cmpb $0, %edx    # just an int
+//	je 2f
+	cmpb $'.', %dl
+	je _decimal
+	movl $60, %ecx
+	cmp $0x3a3a, %edx
+	je _dt
+	movl $100, %ecx
+	cmpb $'-', %dl
+	je _dt
 2:
+	# Push the number, and the position we got to
 	push %eax
-	test %bl, %bl
-	setz %bl
-	dec %ebx
-	push %ebx
-	poprs %edi
-next */
+	push %esi
+	poprs %esi
+next
+
+.align CELL_SIZE
+_decimal:
+	
+jmp 2b
+.align CELL_SIZE
+_dt:  # handles both date and time parsing
+	inc %esi
+	mull %ecx
+	mull %ecx
+	pushrs %eax
+	pushrs %ecx
+	call _natural
+	# todo: test for :
+	poprs %ecx
+	inc %esi
+	mull %ecx
+	addl %eax, (%ebp)
+	call _natural
+	# todo test for null
+	addl (%ebp), %eax
+	poprs %edx
+jmp 2b
+
 
 # List prims #########################################
 
@@ -1521,7 +1536,8 @@ word wordOrNumber // word -- n bool
 	.long trash, cfa, minus_one
 	.long done
 1:
-	.long drop, peek, base10
+	.long drop, peek, one, cell, add, number
+	.long getByte, zero, eq
 	.long zbranch, JUMP(2f)
 	// it's a number, push 0
 	.long trash, zero
