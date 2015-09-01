@@ -236,8 +236,25 @@ ret
 	mov $_error_wrap, %esi
 next
 
-
 .align CELL_SIZE
+_char_to_number:
+	// expects char in %dl and base in %bl. Leaves number in %dl
+	// in the event of failure leaves a number outside of the 
+	// range 0-base in %dl
+	cmpb $'9', %cl
+	jbe 1f
+	andb $0xdf, %cl // make letters upper-case
+	cmpb $'A', %cl
+	jb 2f   // error
+	subb $7, %cl   // compact 
+1:
+	subb $'0', %cl
+ret
+2:
+	mov $-1, %cl
+ret
+
+/* .align CELL_SIZE
 _char_to_number:
 	// expects char in %dl and base in %bl. Leaves number in %dl
 	// in the event of failure zeroes the base in %ebx
@@ -254,7 +271,7 @@ _char_to_number:
 ret
 2:
 	xor %ebx, %ebx
-ret
+ret */
 
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
@@ -870,7 +887,41 @@ prim lenz  // zstr -- int
 	poprs %edi
 next
 
-prim base  // str radix -- int bool
+prim basez  # zstr radix -- int remainder?
+	pushrs %esi
+	xor %eax, %eax
+	pop %ebx
+	pop %esi
+
+	movb (%esi), %al
+	cmpb $'-', %al
+	sete %al
+	pushrs %eax
+	jne 1f
+	xor %eax, %eax
+	inc %esi
+1:
+	movzbl (%esi), %ecx
+	call _char_to_number
+	cmp %cl, %bl
+	jb 2f
+	test %cl, %cl
+	js 2f
+	mull %ebx
+	add %ecx, %eax
+	inc %esi
+	jmp 1b
+2:
+	poprs %edx
+	test %edx, %edx
+	jz 3f
+	neg %eax
+3:
+	push %eax
+	push %esi
+	poprs %esi
+next
+/* prim base  // str radix -- int bool
 	pushrs %edi
 	pop %ebx  // radix
 	pop %edi  // str
@@ -904,7 +955,7 @@ prim base  // str radix -- int bool
 	dec %ebx
 	push %ebx
 	poprs %edi
-next
+next */
 
 # List prims #########################################
 
@@ -928,6 +979,11 @@ next
 
 constant spc, 32, "'spc'"
 
+word base  # str radix -- int bool
+	.long push, one, cell, add
+	.long pop, basez
+	.long getByte, zero, eq
+end
 word scanz # zstr pred -- addr
 	.long push, dec
 1:
