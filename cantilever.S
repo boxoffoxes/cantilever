@@ -140,6 +140,23 @@ str_text_\label:
 	and $0xfffffffc, %edi
 .endm
 
+.macro times_ten reg
+	shl $1, \reg
+	lea (\reg, \reg, 4), \reg
+.endm
+.macro times_60 reg
+	shl $2, \reg
+	lea (\reg, \reg, 4), \reg
+	lea (\reg, \reg, 2), \reg
+.endm
+
+.macro digit from, to, err
+	movb \from, \to
+	sub $'0', \to
+	cmp $9, \to
+	ja \err
+.endm
+
 ######################################################
 # C-style functions                                  #
 ######################################################
@@ -252,25 +269,6 @@ _char_to_number:
 ret
 2:
 	mov $-1, %cl
-ret
-
-.align CELL_SIZE
-_natural:
-	# parse a natural
-	# expects string pointed to by %esi and base in %bl
-	xor %eax, %eax
-1:
-	movzbl (%esi), %ecx
-	call _char_to_number
-	cmp %cl, %bl
-	jb 2f
-	test %cl, %cl
-	js 2f
-	mull %ebx
-	add %ecx, %eax
-	inc %esi
-	jmp 1b
-2:
 ret
 
 # Wrappers for calling words from code ###############
@@ -909,65 +907,143 @@ prim basez  # zstr radix -- int remainder?
 	poprs %esi
 next
 
+.section .data
+.align CELL_SIZE
+number_char_class:
+###    0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+# 00: escape chars
+.byte  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+# 10: 
+.byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+# 20:     !  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
+.byte  0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 6, 4, 0
+# 30:  0  1  2  3  4  5  6  7  8  9  :  ;  <  =  >  ?
+.byte  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 5, 0, 0, 0, 0, 0
+# # 40:  @  A  B  C  D  E  F  G  H  I  J  K  L  M  N  O
+# .byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+# # 50:  P  Q  R  S  T  U  V  W  X  Y  Z  [  \  ]  ^  _
+# .byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+# # 60:  `  a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+# .byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+# # 70:  p  q  r  s  t  u  v  w  x  y  z  {  |  }  ~ DEL
+# .byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+### Handlers
+# 0: terminator
+# 1: error
+# 2: natural
+# 3: char literal 'x'
+# 4: fixed-point 123.45
+# 5: time (x60) 10:00:03
+# 6: date (x100) 2000-01-01
+.align CELL_SIZE
+jump_table:
+	.long _num_err, _num_done, _natural, _char_lit, _decimal, _time, _date
+
 prim number  # zstr -- int bool
 	# see if zstr conforms to one of the supported 
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
+	xor %edx, %edx
 	pushrs %esi
-	movl $10, %ebx  # base goes in %bl
 	pop %esi  # zstr in %esi
 	# check for negative number
 	movb (%esi), %al
 	cmpb $'-', %al
 	sete %al
 	addl %eax, %esi  # increment zstr if negative
-	pushrs %eax
-	call _natural
-	poprs %edx
-	test %edx, %edx
-	jz 1f
-	neg %eax
-1:	# Test for supported number formats
-	xor %edx, %edx
-	movb (%esi), %dl
-	movb 3(%esi), %dh
-//	cmpb $0, %edx    # just an int
-//	je 2f
-	cmpb $'.', %dl
-	je _decimal
-	movl $60, %ecx
-	cmp $0x3a3a, %edx
-	je _dt
-	movl $100, %ecx
-	cmpb $'-', %dl
-	je _dt
-2:
-	# Push the number, and the position we got to
 	push %eax
-	push %esi
-	poprs %esi
-next
+	mov $jump_table, %ebx
+	xor %eax, %eax  # %eax is accumulator.
+
+.align CELL_SIZE
+_natural:
+	xor %ecx, %ecx
+1:
+	digit (%esi), %dl, 2f
+	times_ten %ecx
+	add %edx, %ecx
+	inc %esi
+	jmp 1b
+2:
+	add %ecx, %eax
+
+.align CELL_SIZE
+_choose_handler:
+	# select handler
+	movb (%esi), %dl
+	cmp $':', %dl
+	ja _num_err
+	mov $number_char_class, %ecx
+	movzbl (%ecx, %edx), %ecx
+	mov (%ebx, %ecx, 4), %ecx
+	jmp *%ecx
 
 .align CELL_SIZE
 _decimal:
-jmp 2b
+	inc %esi
+	mov var_decimal_places, %ecx
+	test %ecx, %ecx
+	jz 3f
+1:	
+	mov (%esi), %dl
+	test %dl, %dl
+	jz 2f
+	sub $'0', %dl
+	cmp $9, %dl
+	ja _num_err
+	inc %esi
+2:
+	times_ten %eax
+	addl %edx, %eax
+	loopnz 1b
+3:
+	movb (%esi), %dl
+	test %dl, %dl
+	jz _num_done  # exactly the right number of decimals
+	inc %esi
+	jmp 3b
+
 .align CELL_SIZE
-_dt:  # handles both date and time parsing
+_char_lit:
 	inc %esi
-	mull %ecx
-	mull %ecx
-	pushrs %eax
-	pushrs %ecx
-	call _natural
-	poprs %ecx
+	test %eax, %eax
+	jnz _num_err
+	mov (%esi), %al
+	jmp _num_done
+.align CELL_SIZE
+_time:
 	inc %esi
-	mull %ecx
-	addl %eax, (%ebp)
-	call _natural
-	# todo test for null
-	addl (%ebp), %eax
-	poprs %edx
-jmp 2b
+	times_60 %eax
+	jmp _natural
+
+.align CELL_SIZE
+_date:
+	inc %esi
+	times_ten %eax
+	times_ten %eax
+	jmp _natural
+
+.align CELL_SIZE
+_num_err:
+	pop %edx # discard sign
+	poprs %esi
+	push $0
+	push $0
+next
+
+.align CELL_SIZE
+_num_done:
+	# apply negative from earlier
+	pop %edx
+	test %edx, %edx
+	jz 4f
+	neg %eax
+4:
+	poprs %esi
+	push %eax
+	push $-1
+next
 
 
 # List prims #########################################
@@ -1535,7 +1611,6 @@ word wordOrNumber // word -- n bool
 	.long done
 1:
 	.long drop, peek, one, cell, add, number
-	.long getByte, zero, eq
 	.long zbranch, JUMP(2f)
 	// it's a number, push 0
 	.long trash, zero
@@ -1628,7 +1703,9 @@ string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern matc
 string ErrorWasFatal, "Error was fatal\n"
 string ErrorUnhandled, "Unhandled exception: "
 
+variable decimal_places, 0, "decimal-places"
+
 variable interpreter, interpret
 variable macros, mlink
 variable currentDef, words, "current-def"
-variable words, link
+variable words, link   # MUST BE LAST
