@@ -106,6 +106,10 @@ section: Fixed-point
 	[ 0.01   ]    10 test
 	[ 0.001  ]     1 test
 	[ 0.0001 ]     0 test
+	#[ 5 decimal-places ! ]
+	[ 1.00 ]  100000 test
+	[ 0.00004 ]    4 test
+	[ 200.00007 ] 20000007 test
 
 ;
 section: Bitwise operations

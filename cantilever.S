@@ -945,7 +945,6 @@ _choose_handler:
 _decimal:
 	inc %esi
 	mov var_decimal_places, %ecx
-	# dec %ecx
 	test %ecx, %ecx
 	jz 3f
 1:	
