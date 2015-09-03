@@ -253,24 +253,6 @@ ret
 	mov $_error_wrap, %esi
 next
 
-.align CELL_SIZE
-_char_to_number:
-	// expects char in %dl and base in %bl. Leaves number in %dl
-	// in the event of failure leaves a number outside of the 
-	// range 0-base in %dl
-	cmpb $'9', %cl
-	jbe 1f
-	andb $0xdf, %cl // make letters upper-case
-	cmpb $'A', %cl
-	jb 2f   // error
-	subb $7, %cl   // compact 
-1:
-	subb $'0', %cl
-ret
-2:
-	mov $-1, %cl
-ret
-
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
 cold_start:
@@ -885,27 +867,6 @@ prim lenz  // zstr -- int
 	poprs %edi
 next
 
-prim basez  # zstr radix -- int remainder?
-	xor %eax, %eax
-	pushrs %esi
-	pop %ebx  # base goes in %bl
-	pop %esi  # zstr in %esi
-	# check for negative number
-	movb (%esi), %al
-	cmpb $'-', %al
-	sete %al
-	addl %eax, %esi  # increment zstr if negative
-	pushrs %eax
-	call _natural
-	poprs %edx
-	test %edx, %edx
-	jz 3f
-	neg %eax
-3:	# Push the natural, and the position we got to
-	push %eax
-	push %esi
-	poprs %esi
-next
 
 .section .data
 .align CELL_SIZE
@@ -940,13 +901,14 @@ number_char_class:
 jump_table:
 	.long _num_err, _num_done, _natural, _char_lit, _decimal, _time, _date
 
-prim number  # zstr -- int bool
+prim number  # str -- int bool
 	# see if zstr conforms to one of the supported 
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
 	xor %edx, %edx
 	pushrs %esi
 	pop %esi  # zstr in %esi
+	add $4, %esi
 	# check for negative number
 	movb (%esi), %al
 	cmpb $'-', %al
@@ -1068,11 +1030,6 @@ next
 
 constant spc, 32, "'spc'"
 
-word base  # str radix -- int bool
-	.long push, one, cell, add
-	.long pop, basez
-	.long getByte, zero, eq
-end
 word scanz # zstr pred -- addr
 	.long push, dec
 1:
@@ -1453,11 +1410,6 @@ word putx // n --
 	.long putnumber
 end
 
-word base10
-	.long lit, 10
-	.long base
-end
-
 word clearBuffer
 	.long buffer, get
 	.long bufend, set
@@ -1610,7 +1562,7 @@ word wordOrNumber // word -- n bool
 	.long trash, cfa, minus_one
 	.long done
 1:
-	.long drop, peek, one, cell, add, number
+	.long drop, peek, number
 	.long zbranch, JUMP(2f)
 	// it's a number, push 0
 	.long trash, zero
