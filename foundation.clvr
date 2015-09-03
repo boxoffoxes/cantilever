@@ -179,7 +179,7 @@ macro: _
 	pattern-match-depth inc-var -- because we've dumped the ->
 ;
 
-: base-literal  ( n -> n )
+( : base-literal  ( n -> n )
 	word swap base
 	true -> drop ;;
 	false ->
@@ -192,7 +192,7 @@ macro: _
 macro: bin:  2 base-literal compile-literal ;
 macro: oct:  8 base-literal compile-literal ;
 macro: hex: 16 base-literal compile-literal ;
-
+)
 : nextEntry @ ;
 
 

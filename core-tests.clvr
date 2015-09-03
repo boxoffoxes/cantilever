@@ -107,7 +107,7 @@ section: Bitwise operations
 ;
 section: Bit-shifting
 	[ 1 2 bits-up ] 4 test
-	[ hex: 7fffffff 1 bits-up ] hex: fffffffe test
+	-- [ hex: 7fffffff 1 bits-up ] hex: fffffffe test
 	[ -2 31 bits-up ] 0 test
 	[ -256 31 bits-up ] 0 test
 	[ -256 1 bits-down ] -128 test
@@ -165,21 +165,21 @@ section: Booleans
 	[ 0    bool ]     false  test
 ;
 section: Prefixes
-	[ bin: 100 ] 4 test
-	[ oct: 100 ] 64 test
-	[ hex: ff ] 255 test
-	[ c: x ] hex: 78 test
+	-- [ bin: 100 ] 4 test
+	-- [ oct: 100 ] 64 test
+	-- [ hex: ff ] 255 test
+	[ c: x ] 'x' test
 	-- multi-byte chars -- Warning: tests are non-portable across byte order
 	-- and source-file encoding.
-	[ c: £ ] hex: a3c2 test
-	[ c: ø ] hex: b8c3 test
-	[ c: € ] hex: ac82e2 test
+	-- [ c: £ ] hex: a3c2 test
+	-- [ c: ø ] hex: b8c3 test
+	-- [ c: € ] hex: ac82e2 test
 	-- slightly hacky way of packing up to four chars
 	-- into a cell
-	[ c: w ] hex: 77 test
-	[ c: wx ] hex: 7877 test
-	[ c: wxy ] hex: 797877 test
-	[ c: wxyz ] hex: 7a797877 test
+	[ c: w ] 'w' test
+	-- [ c: wx ] hex: 7877 test
+	-- [ c: wxy ] hex: 797877 test
+	-- [ c: wxyz ] hex: 7a797877 test
 ;
 section: Return stack
 	[ 12121 push pop ]   12121 test
@@ -335,8 +335,8 @@ section: Pre-declaration
 	[ ' predeclared cfa->pfa @ ] ' not-imlemented test
 		
 	-- test implementation using inline code block
-	[ hex: deadbeef ] implements predeclared
-	[ predeclared ] hex: deadbeef test	
+	[ 8008135 ] implements predeclared
+	[ predeclared ] 8008135 test	
 	
 	-- test using dictionary XT
 	' predeclBody implements predeclared
