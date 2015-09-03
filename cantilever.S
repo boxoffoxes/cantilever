@@ -945,6 +945,7 @@ _choose_handler:
 _decimal:
 	inc %esi
 	mov var_decimal_places, %ecx
+	# dec %ecx
 	test %ecx, %ecx
 	jz 3f
 1:	
@@ -958,7 +959,7 @@ _decimal:
 2:
 	times_ten %eax
 	addl %edx, %eax
-	loopnz 1b
+	loop 1b
 3:
 	movb (%esi), %dl
 	test %dl, %dl
