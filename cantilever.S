@@ -763,7 +763,7 @@ next
 
 # Flow control #######################################
 
-prim done, ";"
+prim done
 	poprs %esi
 next
 
@@ -1490,6 +1490,7 @@ end
 # Words that create words ############################
 
 word compileMode "compile-mode"
+	.long semiColonBehaviour, get, call
 	.long dictPtr, get, dpSet
 	.long quote, doneCompiling, semiColonBehaviour, set
 end
@@ -1537,35 +1538,40 @@ word create  # behav --
 	.long word, keeps, words, defdoes, storeinc # , lit, done, storeinc
 end
 word createConstant, "create-constant"  # val --
+	# constant: potentially needs to evaluate the preceding expression
+	# so there's a value waiting
+	.long compileMode
 	.long word, keeps, words, defconst, storeinc
+	.long interpretMode
 end
 word createVariable, "create-variable"  # --
+	.long compileMode
 	.long word, keeps, words, defconst
 	.long here, one, cell, add, storeinc
 	.long zero, storeinc
+	.long interpretMode
 end
 word createWord, "create-word"
+	.long compileMode
 	.long word, keeps, words, defword
 end
 word createMacro, "create-macro"
+	.long compileMode
 	.long word, keeps, macros, defword
 end
 
 
 word constantColon, "constant:", mlink
-	# constant: potentially needs to evaluate the preceding expression
-	# so there's a value waiting
-	.long semiColonBehaviour, get, call
-	.long compileMode, createConstant, interpretMode
+	.long createConstant
 end
 word variableColon, "variable:", mlink
-	.long compileMode, createVariable, interpretMode
+	.long createVariable
 end
 word colon, ":", mlink
-	.long compileMode, createWord
+	.long createWord
 end
 word macroColon, "macro:", mlink
-	.long compileMode, createMacro
+	.long createMacro
 end
 
 word go

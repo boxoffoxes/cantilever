@@ -7,6 +7,7 @@ macro: -- ' end-of-comment? scan   drop  ;
 -- now we have comments. Yay!
 
 macro: c:
+	-- compile a (possibly multi-byte) char
 	word
 	1 cell + @
 	compile-literal
@@ -17,10 +18,9 @@ macro: c:
 : before - ;
 : after + ;
 
-: true -1 ;
-: false 0 ;
+-1 constant: true
+0  constant: false
 
-: 4* 2* 2* ;
 : cells cell ;
 
 : kiB  10 bits-up ;
@@ -33,7 +33,6 @@ macro: c:
 : prev-cell here 1 cell before ;
 : next-cell here 1 cell after ;
 
--- TODO: make it an error to redefine an exception!
 macro: exception:
 	create-variable
 ;
@@ -162,8 +161,7 @@ macro: ->
 	pattern-match-depth inc-var
 ;
 macro: ;;
-	' ; ,
-	-- ' ; ,
+	' done ,
 	rs-usage @  if   unbalanced-rs-error   endif
 	rs-usage !
 	jump-target
@@ -285,11 +283,10 @@ variable: close-bracket-behaviour
 	DoAddr ,
 ;
 : endImmedCodeBlock  ( oldDp -- ?? )
-	' ; ,
+	' done ,
 	dp! anon-code-area-addr @ call
 ;
 macro: #[  (  -- oldDp prevBehav )
-	-- s" #[ " puts report
 	close-bracket-behaviour @
 	' endImmedCodeBlock close-bracket-behaviour !
 	startImmedCodeBlock swap
@@ -298,11 +295,11 @@ macro: #[  (  -- oldDp prevBehav )
 
 -- anonymous function support
 : endAnonCodeBlock ( lambda jaddr -- )
-	' ; ,
+	' done ,
 	jump-target
 	compile-literal
 ;
-macro: #again
+macro: again
 	anon-code-area-addr @ call
 ;
 macro: [  ( -- lambda jaddr prevBehav )
@@ -326,7 +323,7 @@ macro: ]  ( prevBehav -- )
 
 : [] [ ] ;
 
-#[ ' unmatchedBracket close-bracket-behaviour ! ]
+' unmatchedBracket close-bracket-behaviour !
 
 
 macro: times
@@ -357,6 +354,7 @@ macro: repeat
 	' trash ,
 ;
 
+(
 : seeEntry ( entry -- )
 	'(' putc .label puts ')' putc nl ;
 	
@@ -375,7 +373,7 @@ macro: repeat
 : see ( cfa -- )
 	cfa->entry seeEntry
 ;
-
+)
 : allot ( n -- )
 	here + align dp!
 ;
@@ -391,7 +389,7 @@ macro: declare:
 	-- using 'implements:'
 	create-word
 	' not-imlemented ,
-	' ; ,
+	' done ,
 ;
 
 : implements
@@ -399,7 +397,7 @@ macro: declare:
 	-- and re-writes the PF with the function in ToS
 	pop dup 1 cell after push -- skip the next compiled word
 	@ 1 cell after stash !
-	' ; pop 1 cell after !   -- 
+	' done pop 1 cell after !   -- 
 ;
 
 macro: prior: 
@@ -421,6 +419,7 @@ macro: suppress-macro:
 	_ -> drop s" Closing file failed" 1 error ;;
 ;
 
+(
 -- RS safety checks ------------------------------------------
 
 macro: stash
@@ -552,5 +551,5 @@ macro: see-data-stack
 	dup @ @ swap !
 	pop
 ;
-
+)
 -- vim:ft=cantilever
