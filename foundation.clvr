@@ -460,7 +460,7 @@ macro: trash
 ; 
 
 macro: ;   _done ;
-
+)
 -- structures
 macro: struct:
 	create-word
@@ -468,9 +468,10 @@ macro: struct:
 	' lit ,
 	here push 0 ,
 	' allot ,
-	' suppress-macro: ; ,
+	' done ,
 	pop
 	0
+	interpret-mode
 	-- s" struct: " puts
 	-- dup putn 
 ;
@@ -485,8 +486,9 @@ macro: end
 	create-word
 	swap dup compile-literal
 	' + ,
-	' suppress-macro: ; ,
+	' done ,
 	+
+	interpret-mode
 	-- spc dup putn
 ;
 macro: cell: ( tot n -- tot' )
@@ -551,5 +553,4 @@ macro: see-data-stack
 	dup @ @ swap !
 	pop
 ;
-)
 -- vim:ft=cantilever

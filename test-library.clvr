@@ -24,6 +24,7 @@ variable: dotColumn
 ;
 
 macro: section:
+	compile-mode
 	'\n' compileString
 	test-library defword
 	' normal ,

@@ -1535,7 +1535,9 @@ end
 
 
 word create  # behav --
+	.long compileMode
 	.long word, keeps, words, defdoes, storeinc # , lit, done, storeinc
+	.long interpretMode
 end
 word createConstant, "create-constant"  # val --
 	# constant: potentially needs to evaluate the preceding expression

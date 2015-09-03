@@ -28,17 +28,16 @@ section: Args
 ;
 
 
-# 10 constant: ten
-# -1 constant: minus-one
+10 constant: ten
+-2 constant: minus-two
 
 section: Constants
 	[ ten ] 10 test
-	[ minus-one ] -1 test
+	[ minus-two ] -2 test
 	-- constants defined in foundation
 	[ 0 ] 0 test
 	[ 1 ] 1 test
 ;
-
 section: Units
 	[ 1 kiB ] 1024 test
 	[ 1 MiB ] 1024 1024 * test
@@ -371,8 +370,8 @@ section: Tail-calls
 	[ 1000 non-tail-rs-depth-test   tail-rs-depth @ rs-depth - ] 1000 test
 ;
 
-# run-tests
-# test-report
-# profile-report
+: do-it! run-tests   test-report   profile-report ;
+
+# do-it!
 
 -- vim:ft=cantilever
