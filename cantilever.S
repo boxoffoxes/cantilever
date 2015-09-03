@@ -1279,6 +1279,8 @@ word initialiseVM
 	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
 	# create anon code area
 	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
+	# when we're not compiling a definition we compile to anonCodeArea
+	.long interpretMode
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
@@ -1468,7 +1470,7 @@ word compileWord, "compile-word" // cfa --
 end
 
 word compileLiteral, "compile-literal" // n --
-	.long lit, lit, storeinc, storeinc
+	.long quote, lit, storeinc, storeinc
 end
 
 word report
@@ -1487,6 +1489,24 @@ end
 
 # Words that create words ############################
 
+word compileMode "compile-mode"
+	.long dictPtr, get, dpSet
+	.long quote, doneCompiling, semiColonBehaviour, set
+end
+
+word doneCompiling
+	.long quote, done, storeinc
+	.long interpretMode
+end
+
+word interpretMode "interpret-mode"
+	.long here, dictPtr, set
+	.long anonCodeAreaAddr, get, dpSet
+	.long quote, do, storeinc
+	.long quote, go, semiColonBehaviour, set
+end
+
+
 word header  // str dict --
 	.long stash  # -- str dict / dict
 	.long dpAlign
@@ -1503,13 +1523,13 @@ end
 
 
 word defdoes   # str dict --
-	.long lit, dodoes, define
+	.long quote, dodoes, define
 end
 word defword   # str dict -- 
-	.long lit, do, define
+	.long quote, do, define
 end
 word defconst  # val str dict -- 
-	.long lit, doconst, define
+	.long quote, doconst, define
 end
 
 
@@ -1533,19 +1553,32 @@ end
 
 
 word constantColon, "constant:", mlink
-	.long createConstant
+	# constant: potentially needs to evaluate the preceding expression
+	# so there's a value waiting
+	.long semiColonBehaviour, get, call
+	.long compileMode, createConstant, interpretMode
 end
 word variableColon, "variable:", mlink
-	.long createVariable
+	.long compileMode, createVariable, interpretMode
 end
 word colon, ":", mlink
-	.long createWord
+	.long compileMode, createWord
 end
 word macroColon, "macro:", mlink
-	.long createMacro
+	.long compileMode, createMacro
 end
 
+word go
+	.long quote, done, storeinc
+	.long anonCodeAreaAddr, get
+	.long dup, dpSet
+	.long quote, do, storeinc
+	.long call
+end
 
+word semiColon ";" mlink
+	.long semiColonBehaviour, get, call
+end
 
 word findWord   # word -- entry
 	.long words, find
@@ -1639,6 +1672,8 @@ variable ds0
 variable rs0
 variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
+variable dictPtr, ,"dict-ptr"
+variable semiColonBehaviour, go, "semicolon-behaviour"
 
 string WarningPrefix, "--> Warning: [33m"
 string Error, "==> [31mError. [33m"

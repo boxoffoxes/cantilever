@@ -1,6 +1,6 @@
-# 9  constant: '\t'
-# 10 constant: '\n'
-# 27 constant: '\e'
+9  constant: '\t'
+10 constant: '\n'
+27 constant: '\e'
 
 : end-of-comment? '\n' eq? ;
 macro: -- ' end-of-comment? scan   drop  ;
@@ -457,7 +457,7 @@ macro: trash
 		s" Unmatched -> or ;; in definition of " 2 warning
 		0 pattern-match-depth !
 	endif
-	' ; ,
+	semicolon-behaviour @ call
 ; 
 
 macro: ;   _done ;
