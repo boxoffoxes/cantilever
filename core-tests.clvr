@@ -93,7 +93,14 @@ section: Arithmetic
 section: Date and time
 	[ 1:00:00 ] 3600 test
 	[ 0:10:56 ] 656  test
-	[ 2000-01-01 ] 20000101 test
+	-- [ 2000-01-01 ] 20000101 test
+	CheapDate if
+		[ 2015-03-01 ] 20150301 test
+		[ 1600-03-01 ] 16000301 test
+	else
+		[ 2015-03-01 ] 157921 test
+		[ 1600-03-01 ] 6346   test
+	endif
 ;
 
 3 decimal-places !

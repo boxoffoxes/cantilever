@@ -1,35 +1,96 @@
 -- vim: ft=cantilever
 
-: basez  ( zstr base -- int addr? )
-	-- parse the leading numeric portion of zstr in specified base
-	-- if the whole string is consumed then addr? is zero, else 
-	-- addr of first unparsed char.
-	push 
-	dup @b digit
-	dup 0 peek between? not if 
-		swap return
+: puttime  ( t -- )
+	60 divmod swap
+	60 divmod swap
+	putn
+	':' putc
+	putn
+	':' putc
+	putn
+;
+
+146097 constant: 4Centuries
+36524  constant: 1Century
+1461   constant: 4Years
+365    constant: 1Year
+153    constant: 5Months
+
+1600   constant: BaseDate
+
+: _make-year  ( 4cs 1c 4ys 1y 5ms -- ys )
+	2 eq?  if  1+  endif
+	swap    4 *   +
+	swap  100 *   +
+	swap  400 *   +
+	BaseDate +
+;
+: _make-month  ( ds -- ms ds )
+	stash  31 +   5 *  5Months div   2 +
+	pop   over 1+   5Months *   5 div   -   123 +
+	push
+	dup 13 or-more? if
+		12 -
 	endif
+	pop
 ;
+: putdate  ( date -- )
+	LilianCorrection 1+ -
+	4Centuries divmod 
+	4Centuries 1- ->  -- Feb 29th of a 400th year
+		drop
+		1+   400 *   BaseDate +  putn
+		s" -02-29" puts
+	;;
+	1Century divmod
+	4Years   divmod   -- stack: 4cs 1cs 4ys r
+	4Years 1- ->  -- Feb 29th of a 4th year
+		drop 
+		1+  4 *
+		swap   100 *  +
+		swap   400 *  +
+		BaseDate +   putn
+		s" -02-29" puts
+	;;
+	1Year divmod    -- ds: 4cs 1c 4ys 1y r
+	stash
+	5Months divmod  -- ds: 4cs 1c 4ys 1y 5ms r
+	drop _make-year
+	putn
+	'-' putc
 
-
-variable: time-hour
-variable: time-minute
-variable: time-second
-
-: hour  ( zstr -- time str' )
-	10 base  
-;
-
-
-: time  ( str -- time )
+	pop _make-month
+	swap 
+	dup    9 or-less? if    '0' putc    endif
+	putn 
+	'-' putc
+	dup    9 or-less? if    '0' putc    endif
+	putn
 	
+
+;
+
+: putd  ( decimal -- )
+	-- TODO: discard low-order zeroes for neatness
+	decimal-places @ times
+		10 divmod swap
+	repeat
+	putn
+	'.' putc
+	decimal-places @ times
+		'0' + putc
+	repeat
 ;
 
 
-
-variable: date-year
-variable: date-month
-variable: date-day
-
+2012-02-29 putdate nl ;
+2000-02-29 putdate nl ;
+1600-03-01 putdate nl ;
+1900-12-31 putdate nl ;
+1970-01-01 putdate nl ;
+2015-03-01 putdate nl ;
+2015-03-10 putdate nl ;
+2015-04-01 putdate nl ;
+1744-10-31 putdate nl ;
 
 

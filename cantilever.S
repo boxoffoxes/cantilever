@@ -16,6 +16,9 @@
 .set link, 0
 .set mlink, 0
 
+#define BASE_4_YEAR 1461
+#define LILIAN_CORRECTION 6345
+
 ######################################################
 # macros                                             #
 ######################################################
@@ -900,6 +903,9 @@ number_char_class:
 .align CELL_SIZE
 jump_table:
 	.long _num_err, _num_done, _natural, _char_lit, _decimal, _time, _date
+month_table:
+	#      J    F   M   A   M   J   J    A    S    O    N    D
+	.long 306, 337, 0, 31, 61, 92, 122, 153, 184, 214, 245, 275
 
 prim number  # str -- int bool
 	# see if zstr conforms to one of the supported 
@@ -982,9 +988,88 @@ _time:
 .align CELL_SIZE
 _date:
 	inc %esi
+#ifdef CANTILEVER_CHEAP_DATE
+	# Use a date format useless for anything
+	# but comparison ( YYYY x 10000 + MM x 100 + DD )
 	times_ten %eax
 	times_ten %eax
 	jmp _natural
+#else
+	# We use Lilian Date, which is a count of days since the 
+	# start of the Gregorian calendar, where 15 Oct 1582 is 1 (_not_ 0!)
+	# Because of the algorithm used, dates before 1st March 1600 
+	# will be incorrect!
+
+	# first calculate year offset from 1600
+	subl $1600, %eax
+	push %eax  # no of years
+	xor %edx, %edx
+	xor %eax, %eax
+
+_month:
+	mov (%esi), %dl
+	cmp $'-', %dl
+	je 2f
+	sub $'0', %dl
+	cmp $9, %dl
+	ja _num_err
+	inc %esi
+	times_ten %eax
+	add %edx, %eax
+	jmp _month
+2:
+	# calculate number of days using month_table table above, based on
+	# formula from  <http://christophe.lavarenne.free.fr/tagnumen.html>
+	inc %esi
+	cmp $12, %eax
+	ja _num_err  # month>12? I don't think so!
+	cmp $3, %eax
+	setb %dl     #  %dl = 1 if jan or feb, 0 otherwise
+	sub %edx, (%esp)  # we count years from 1st March, so yr-1 for jan or feb
+	dec %eax     # month->index (0-11)
+	mov $month_table, %ecx
+	mov (%ecx, %eax, 4), %eax   # days to start of month
+	push %eax
+	xor %eax, %eax
+	xor %edx, %edx
+_day:
+	mov (%esi), %dl
+	cmp $0, %dl
+	je 3f
+	sub $'0', %dl
+	cmp $9, %dl
+	ja _num_err
+	inc %esi
+	times_ten %eax
+	add %edx, %eax
+	jmp _day
+3:
+	pop %ecx        # days to start of month from March
+	add %eax, %ecx  # total days from start of year (-mm-dd portion)
+	pop %eax        # remember our year from earlier?
+	push %ecx
+	push %eax
+
+	# calculate missed century leap-days...
+	mov $100, %ecx
+	divl %ecx      # divide %eax by 100 for centuries
+	mov %eax, %ebx	
+	shr $2, %eax    # divide 100 yr missed-leaps by 4 for 400 year leaps
+	sub %ebx, %eax
+	# convert years to days
+	xchg (%esp), %eax
+	mov $BASE_4_YEAR, %ecx   # (1461 = 365.25 * 4) I love fixed-point. A base-4 fxp saves us a div!)
+	mull %ecx
+	shr $2, %eax   # convert back from base-4 fix-point
+	pop %edx
+	pop %ecx
+	add %edx, %eax
+	add %ecx, %eax
+	add $LILIAN_CORRECTION, %eax  # Convert to Lilian date
+#	pop %edx
+#	jmp _num_done
+	jmp _num_done
+#endif
 
 .align CELL_SIZE
 _num_err:
@@ -1665,6 +1750,13 @@ constant CellSize, CELL_SIZE
 constant ProfilingEnabled, -1
 #else
 constant ProfilingEnabled, 0
+#endif
+#ifdef CANTILEVER_CHEAP_DATE
+constant CheapDate, -1
+#else
+constant CheapDate, 0
+constant Base4Year, BASE_4_YEAR
+constant LilianCorrection, LILIAN_CORRECTION
 #endif
 
 variable argc
