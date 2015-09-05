@@ -344,6 +344,7 @@ constant SysMmap,  __NR_mmap
 constant SysMunmap, __NR_munmap
 constant SysBrk,   __NR_brk
 constant SysIOCtl, __NR_ioctl
+constant SysTime,  __NR_time
 
 # prims
 prim syscall0  # id -- result

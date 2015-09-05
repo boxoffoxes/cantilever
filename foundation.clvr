@@ -645,4 +645,14 @@ macro: see-data-stack
 	s" 3.1415926535898" number drop
 ;
 
+60 60 24 * * constant: SecondsInADay
+1970-01-01 constant: UnixEpoch
+: now ( -- date time )
+	-- WARNING: time is UTC.
+	0 SysTime syscall1
+	SecondsInADay divmod push   UnixEpoch +   pop
+;
+: today ( -- date ) now drop ;
+: time  ( -- time ) now nip  ;
+
 -- vim:ft=cantilever
