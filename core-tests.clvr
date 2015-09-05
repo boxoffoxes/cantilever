@@ -23,10 +23,6 @@
 	drop
 ;
 
-section: Args
-	[ argc @ ] 1 test
-;
-
 
 10 constant: ten
 -2 constant: minus-two
@@ -265,20 +261,22 @@ section: Comments
 	[ 0 ( this is a comment (and this is part of 
 	      the same comment) :) :(   ) ] 0 test
 ;
+( -- TOO DANGEROUS in combination with reading files from the commandline!
+  -- Particularly the write-tests!
 section: FileIO
-	[ s" /etc/fstab" ReadOnly open ] 3 test
-	[ s" /tmp/cantilever_out" WriteOnly open ] 4 test
-	[ 4 file-length ] 0 test
+	[ s" /etc/fstab" ReadOnly open           ]  in-channel @ 1+   test
+	[ s" /tmp/cantilever_out" WriteOnly open ] stash  in-channel @ 2 +  test
+	peek [ file-length ] 0 test
 
 	out-channel @
-		4 out-channel !
+		peek out-channel !
 		s" test" puts
 		out-channel !
 
-	[ 4 file-length ] 4 test
+	peek [ file-length ] 4 test
 	[ 0   3 close ] 0 test
 	[ 0   4 close ] 0 test
-;
+; )
 section: Strings
 	[ s" hello" lens ] 5 test
 	[ s" blah"  lens ] 4 test

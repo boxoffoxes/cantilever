@@ -1,0 +1,12 @@
+#!/bin/bash
+
+CLVR_DIR=~/Common/Sources/Cantilever
+CLVR="$CLVR_DIR/cantilever"
+CLVR_LIB="$CLVR_DIR/foundation.clvr"
+WRAP=
+
+if [ -n "`type -f rlwrap`" ]; then
+	WRAP="rlwrap -pPurple"
+fi
+
+exec $WRAP $CLVR $CLVR_LIB

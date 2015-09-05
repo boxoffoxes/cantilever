@@ -72,6 +72,7 @@
 
 : putd  ( decimal -- )
 	-- TODO: discard low-order zeroes for neatness
+	putsign
 	decimal-places @ times
 		10 divmod swap
 	repeat
@@ -87,10 +88,17 @@
 2000-02-29 putdate nl ;
 1600-03-01 putdate nl ;
 1900-12-31 putdate nl ;
+1901-01-01 putdate nl ;
 1970-01-01 putdate nl ;
 2015-03-01 putdate nl ;
+2015-02-29 putdate nl ; -- 2015 not a leap-year: should yield 1st March
 2015-03-10 putdate nl ;
 2015-04-01 putdate nl ;
 1744-10-31 putdate nl ;
+
+4 decimal-places !   nl ;
+123.774 putd nl ;
+-0.0001 putd nl ;
+-123.774 putd nl ;
 
 

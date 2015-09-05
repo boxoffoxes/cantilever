@@ -8,7 +8,7 @@
 # Useful values ######################################
 .set HEAP_SIZE, 128*1024*1024  # 128 meg
 .set SCRATCH_SIZE, 16*1024     # 16k
-.set BUFFER_SIZE,   4*1024     #  4k
+.set BUFFER_SIZE,  16*1024     #  4k
 .set WORD_BUFFER_SIZE, 256
 .set CELL_BITS, 2
 .set CELL_SIZE, (1<<CELL_BITS)
@@ -180,8 +180,7 @@ _start:
 	mov %eax, var_argc
 	lea 4(%esp), %eax
 	mov %eax, var_argv
-	sub $BUFFER_SIZE, %esp
-	mov %esp, var_io_buffer
+	mov %eax, var_argv0
 	push $0
 	mov %esp, var_ds0
 	mov %esp, %ebp
@@ -197,7 +196,7 @@ next
 _fill_buffer:
 	mov $__NR_read, %eax
 	mov var_inChannel, %ebx
-	mov var_io_buffer, %ecx
+	mov var_ioBuffer, %ecx
 	mov %ecx, var_bufpos  // reset buffer position
 	mov $BUFFER_SIZE, %edx
 	int $0x80
@@ -210,7 +209,7 @@ _fill_buffer:
 _key:
 	mov var_bufpos, %ebx
 	cmpl var_bufend, %ebx
-	jge _fill_buffer
+	jae _fill_buffer
 	movzbl (%ebx), %eax
 	inc %ebx
 	mov %ebx, var_bufpos
@@ -218,6 +217,9 @@ ret
 
 .align CELL_SIZE
 _eof:
+	mov var_ioBuffer, %eax
+	mov %eax, var_bufend
+	mov %eax, var_bufpos
 	mov $_eof_wrap, %esi
 next
 
@@ -341,6 +343,7 @@ constant SysStat,  __NR_fstat
 constant SysMmap,  __NR_mmap
 constant SysMunmap, __NR_munmap
 constant SysBrk,   __NR_brk
+constant SysIOCtl, __NR_ioctl
 
 # prims
 prim syscall0  # id -- result
@@ -1233,7 +1236,7 @@ word exit #  n --
 	.long SysExit, syscall1
 end
 
-word bye
+word bye, , mlink
 	.long byebye, puts, nl
 	.long zero, exit
 end
@@ -1254,6 +1257,10 @@ word open  # str mode -- fh
 	.long pop, zopen
 end
 
+word zopenIn, "zopen-in"
+	.long ReadOnly, zopen, inChannel, set
+end
+
 word openIn, "open-in"
 	.long ReadOnly, open, inChannel, set
 end
@@ -1270,6 +1277,10 @@ end
 word closeOut
 	.long outChannel, get, close
 	.long stdout, outChannel, set
+end
+word closeIn
+	.long inChannel, get, close
+	.long stdin, inChannel, set
 end
 
 word write  # str len fh -- 
@@ -1306,6 +1317,11 @@ word fileLength  "file-length" # fd -- len
 	.long statFD, st_size, get
 end
 
+constant TCGETS, 0x00005401
+word isATTY "is-a-tty?"  # fd -- bool
+	.long push, scratchpadAddr, get, TCGETS, pop, SysIOCtl, syscall3
+	.long zero, eq
+end
 
 constant MapShared,     MAP_SHARED
 constant MapPrivate,    MAP_PRIVATE
@@ -1364,14 +1380,31 @@ word initialiseVM
 	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
 	# create anon code area
 	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
+	# set up an IO buffer
+	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
 	# when we're not compiling a definition we compile to anonCodeArea
 	.long interpretMode
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
-	.long argv, get, one, cell, add, get
-	.long bufferZFile
+	#.long argv, get, one, cell, add, get
+	.long handleArgs
 1:
+end
+
+word nextArg
+	.long argv, get, one, cell, add
+	.long dup, argv, set
+	.long get
+end
+
+word handleArgs
+	.long quote, handleArgs, handles, EndOfFile
+	.long nextArg, dup, zbranch, JUMP(1f)
+	.long dup, zopenIn, reset
+1:
+	.long stdin, inChannel, set
+	.long quote, exit0, handles, EndOfFile
 end
 
 
@@ -1669,8 +1702,20 @@ word go
 	.long call
 end
 
+word welcome
+	.long inChannel, get, isATTY, zbranch, JUMP(0f)
+	.long WelcomeMessage, puts
+0:
+end
+word prompt
+	.long inChannel, get, isATTY, zbranch, JUMP(0f)
+	.long promptText, get, puts
+0:
+end
+
 word semiColon ";" mlink
 	.long semiColonBehaviour, get, call
+	.long prompt
 end
 
 word findWord   # word -- entry
@@ -1701,7 +1746,6 @@ word wordOrNumber // word -- n bool
 end
 
 word interpret
-0:
 	.long word, stash, findMacro, dup
 	.long zbranch, JUMP(1f)
 	// it's a macro
@@ -1734,6 +1778,7 @@ string rsReport "  rs: "
 word reset
 1:
 	.long rs0, get, rspSet 
+	.long prompt
 	.long interpreter, get, call
 	.long tailcall, reset
 end
@@ -1761,8 +1806,9 @@ constant LilianCorrection, LILIAN_CORRECTION
 
 variable argc
 variable argv
+variable argv0
 
-variable io_buffer
+variable ioBuffer, , "io-buffer"
 variable bufpos
 variable bufend
 variable scratchpadAddr, , "scratchpad-addr"
@@ -1775,6 +1821,7 @@ variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
 variable semiColonBehaviour, go, "semicolon-behaviour"
 
+string WelcomeMessage "Welcome to Cantilever\n"
 string WarningPrefix, "--> Warning: [33m"
 string Error, "==> [31mError. [33m"
 string ResetColour, "[0m"
@@ -1789,9 +1836,11 @@ string InvalidEsc, "Invalid escape char: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
 string ErrorWasFatal, "Error was fatal\n"
 string ErrorUnhandled, "Unhandled exception: "
+string DefaultPrompt, "\n ok: "
 
 variable decimal_places, 0, "decimal-places"
 
+variable promptText, str_DefaultPrompt, "prompt-text"
 variable interpreter, interpret
 variable macros, mlink
 variable currentDef, words, "current-def"
