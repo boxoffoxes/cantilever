@@ -119,11 +119,11 @@ str_text_\label:
 .endm
 
 .macro end
-	.long done
+	.long return
 	99999:
 .endm
 
-.macro bytes_to_cells reg
+.macro string_len_in_cells reg
 	shr $CELL_BITS, \reg
 	inc \reg
 .endm
@@ -208,7 +208,7 @@ _fill_buffer:
 .align CELL_SIZE
 _key:
 	mov var_bufpos, %ebx
-	cmpl var_bufend, %ebx
+	cmp var_bufend, %ebx
 	jae _fill_buffer
 	movzbl (%ebx), %eax
 	inc %ebx
@@ -636,7 +636,7 @@ next
 prim dsDepth, "ds-depth"
 	mov var_ds0, %eax
 	sub %esp, %eax
-	bytes_to_cells %eax
+	sar $CELL_BITS, %eax
 	push %eax
 next
 
@@ -677,7 +677,7 @@ next
 prim rsDepth, "rs-depth"
 	mov var_rs0, %eax
 	sub %ebp, %eax
-	bytes_to_cells %eax
+	sar $CELL_BITS, %eax
 	push %eax
 next
 
@@ -770,7 +770,7 @@ next
 
 # Flow control #######################################
 
-prim done
+prim return
 	poprs %esi
 next
 
@@ -823,7 +823,7 @@ prim copys  # str addr -- str'
 	lodsl
 	mov %eax, %ecx
 	stosl
-	bytes_to_cells %ecx
+	string_len_in_cells %ecx
 	rep movsl
 	poprs %esi
 	mov %edx, %edi
@@ -839,7 +839,7 @@ prim keeps  // tmpStr -- str
 	lodsl  // length into %eax
 	mov %eax, %ecx
 	stosl  // save length to dest
-	bytes_to_cells %ecx
+	string_len_in_cells %ecx
 	repe movsl
 	mov %edx, %esi
 next
@@ -851,7 +851,7 @@ prim strEq # str str -- bool
 	pop %esi
 	pop %edi
 	mov (%esi), %ecx
-	bytes_to_cells %ecx
+	string_len_in_cells %ecx
 	inc %ecx  # extra one for the length field
 	repe cmpsl
 	setnz %dl
@@ -1117,6 +1117,85 @@ next
 # Forth-style non-primitive words                    #
 ######################################################
 
+# Startup code #######################################
+
+word initialiseVM
+	# initialise the dictionary pointer
+	.long getBrkAddr, dictPtr, set
+	# allocate default heap
+	.long lit, HEAP_SIZE, setHeapSize
+	# create scratchpad
+	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
+	# create anon code area
+	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
+	# set up an IO buffer
+	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
+	# are there any commandline args...
+	.long argc, get, dec, zbranch, JUMP(1f)
+	# ...yes, then open the first one
+	#.long argv, get, one, cell, add, get
+	.long handleArgs
+1:
+	.long reset
+end
+
+word reset
+1:
+	.long rs0, get, rspSet 
+	.long anonymousCode
+	.long prompt
+	.long interpreter, get, call
+	.long tailcall, reset
+end
+
+word handleArgs
+	.long quote, handleArgs, handles, EndOfFile
+	.long nextArg, dup, zbranch, JUMP(1f)
+	.long dup, zopenIn, reset
+1:
+	.long stdin, inChannel, set
+	.long quote, exit0, handles, EndOfFile
+end
+
+word nextArg
+	.long argv, get, one, cell, add
+	.long dup, argv, set
+	.long get
+end
+
+
+word anonymousCode
+	.long anonCodeAreaAddr, get, dpSet
+	.long quote, do, storeinc
+end
+word compiling
+	.long go    # evaluate any args (e.g. for constant: or create)
+	.long dictPtr, get, dpSet
+end
+word doneCompiling, "done-compiling"
+	.long quote, return, storeinc
+	.long here, dictPtr, set
+	.long anonymousCode
+end
+word semiColon, ";", mlink
+	# todo: add check that code is not anonymous
+	.long doneCompiling
+end
+word go
+	.long quote, return, storeinc
+	.long anonCodeAreaAddr, get, call
+	.long anonymousCode
+	.long prompt
+end
+word dot, ".", mlink
+	# todo: add check that code is anonymous
+	.long go
+end
+
+
+
+
+
 constant spc, 32, "'spc'"
 
 word scanz # zstr pred -- addr
@@ -1160,7 +1239,7 @@ end
 word raise
 	.long dup, get
 	.long dup, zbranch, JUMP(1f)
-	.long nip, call, done
+	.long nip, call, return
 1:
 	.long drop, labelForVar
 	.long ErrorUnhandled, lit, 2, error
@@ -1372,43 +1451,6 @@ word bufferFile "buffer-file"  # str -- addr len fd
 	.long bufferZFile
 end
 
-word initialiseVM
-	# initialise the dictionary pointer
-	.long getBrkAddr, dpSet
-	# allocate default heap
-	.long lit, HEAP_SIZE, setHeapSize
-	# create scratchpad
-	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
-	# create anon code area
-	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
-	# set up an IO buffer
-	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
-	# when we're not compiling a definition we compile to anonCodeArea
-	.long interpretMode
-	# are there any commandline args...
-	.long argc, get, dec, zbranch, JUMP(1f)
-	# ...yes, then open the first one
-	#.long argv, get, one, cell, add, get
-	.long handleArgs
-1:
-end
-
-word nextArg
-	.long argv, get, one, cell, add
-	.long dup, argv, set
-	.long get
-end
-
-word handleArgs
-	.long quote, handleArgs, handles, EndOfFile
-	.long nextArg, dup, zbranch, JUMP(1f)
-	.long dup, zopenIn, reset
-1:
-	.long stdin, inChannel, set
-	.long quote, exit0, handles, EndOfFile
-end
-
-
 
 .section .data
 .align CELL_SIZE, 0
@@ -1596,36 +1638,14 @@ word report
 	// This shouldn't be a word because that skews its view of 
 	// the return stack. Unfortunately without refactoring we
 	// can't call putn from a prim. :(
-	.long dsReport, puts
-	.long ds0, get, dsp, sub
-	.long putn
-	.long rsReport, puts
-	.long rsDepth
-	.long putn
+	.long dsReport, puts,   dsDepth, putn
+	.long rsReport, puts,   rsDepth, putn
 	.long nl
 end
 
 
+
 # Words that create words ############################
-
-word compileMode "compile-mode"
-	.long semiColonBehaviour, get, call
-	.long dictPtr, get, dpSet
-	.long quote, doneCompiling, semiColonBehaviour, set
-end
-
-word doneCompiling
-	.long quote, done, storeinc
-	.long interpretMode
-end
-
-word interpretMode "interpret-mode"
-	.long here, dictPtr, set
-	.long anonCodeAreaAddr, get, dpSet
-	.long quote, do, storeinc
-	.long quote, go, semiColonBehaviour, set
-end
-
 
 word header  // str dict --
 	.long stash  # -- str dict / dict
@@ -1654,30 +1674,30 @@ end
 
 
 word create  # behav --
-	.long compileMode
-	.long word, keeps, words, defdoes, storeinc # , lit, done, storeinc
-	.long interpretMode
+	.long compiling
+	.long word, keeps, words, defdoes, storeinc # , lit, return, storeinc
+	.long doneCompiling
 end
 word createConstant, "create-constant"  # val --
 	# constant: potentially needs to evaluate the preceding expression
 	# so there's a value waiting
-	.long compileMode
+	.long compiling
 	.long word, keeps, words, defconst, storeinc
-	.long interpretMode
+	.long doneCompiling
 end
 word createVariable, "create-variable"  # --
-	.long compileMode
+	.long compiling
 	.long word, keeps, words, defconst
 	.long here, one, cell, add, storeinc
 	.long zero, storeinc
-	.long interpretMode
+	.long doneCompiling
 end
 word createWord, "create-word"
-	.long compileMode
+	.long compiling
 	.long word, keeps, words, defword
 end
 word createMacro, "create-macro"
-	.long compileMode
+	.long compiling
 	.long word, keeps, macros, defword
 end
 
@@ -1695,14 +1715,6 @@ word macroColon, "macro:", mlink
 	.long createMacro
 end
 
-word go
-	.long quote, done, storeinc
-	.long anonCodeAreaAddr, get
-	.long dup, dpSet
-	.long quote, do, storeinc
-	.long call
-end
-
 word welcome
 	.long inChannel, get, isATTY, zbranch, JUMP(0f)
 	.long WelcomeMessage, puts
@@ -1712,11 +1724,6 @@ word prompt
 	.long inChannel, get, isATTY, zbranch, JUMP(0f)
 	.long promptText, get, puts
 0:
-end
-
-word semiColon ";" mlink
-	.long semiColonBehaviour, get, call
-	.long prompt
 end
 
 word findWord   # word -- entry
@@ -1732,13 +1739,13 @@ word wordOrNumber // word -- n bool
 	.long zbranch, JUMP(1f)
 	// it's a word, get the CFA, clean RS and push -1
 	.long trash, cfa, minus_one
-	.long done
+	.long return
 1:
 	.long drop, peek, number
 	.long zbranch, JUMP(2f)
 	// it's a number, push 0
 	.long trash, zero
-	.long done
+	.long return
 2:
 	// error
 	.long drop, pop
@@ -1776,14 +1783,6 @@ end
 string dsReport "  ds: "
 string rsReport "  rs: "
 
-word reset
-1:
-	.long rs0, get, rspSet 
-	.long prompt
-	.long interpreter, get, call
-	.long tailcall, reset
-end
-
 .section .rodata
 
 constant DoAddr,      do
@@ -1820,7 +1819,6 @@ variable rs0
 variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
-variable semiColonBehaviour, go, "semicolon-behaviour"
 
 string WelcomeMessage "Welcome to Cantilever\n"
 string WarningPrefix, "--> Warning: [33m"

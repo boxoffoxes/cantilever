@@ -139,7 +139,7 @@ exception: ZStringTransformationNotImplemented
 ;
 
 macro: (
-	1
+	1   -- track the depth of the nesting
 	' _nested-comment while-word
 	drop
 ;
@@ -163,7 +163,7 @@ macro: ->
 	pattern-match-depth inc-var
 ;
 macro: ;;
-	' done ,
+	' return ,
 	rs-usage @  if   unbalanced-rs-error   endif
 	rs-usage !
 	jump-target
@@ -285,7 +285,7 @@ variable: close-bracket-behaviour
 	DoAddr ,
 ;
 : endImmedCodeBlock  ( oldDp -- ?? )
-	' done ,
+	' return ,
 	dp! anon-code-area-addr @ call
 ;
 macro: #[  (  -- oldDp prevBehav )
@@ -297,7 +297,7 @@ macro: #[  (  -- oldDp prevBehav )
 
 -- anonymous function support
 : endAnonCodeBlock ( lambda jaddr -- )
-	' done ,
+	' return ,
 	jump-target
 	compile-literal
 ;
@@ -358,7 +358,7 @@ macro: repeat
 
 (
 : seeEntry ( entry -- )
-	'(' putc .label puts ')' putc nl ;
+	'(' putc .label puts ')' putc nl return
 	
 	findWord dup if
 		':' putc spc 'spc'
@@ -391,7 +391,7 @@ macro: declare:
 	-- using 'implements:'
 	create-word
 	' not-imlemented ,
-	' done ,
+	' return ,
 ;
 
 : implements
@@ -399,7 +399,7 @@ macro: declare:
 	-- and re-writes the PF with the function in ToS
 	pop dup 1 cell after push -- skip the next compiled word
 	@ 1 cell after stash !
-	' done pop 1 cell after !   -- 
+	' return pop 1 cell after !   -- 
 ;
 
 macro: prior: 
@@ -421,7 +421,7 @@ macro: suppress-macro:
 	_ -> drop s" Closing file failed" 1 error ;;
 ;
 
-(
+
 -- RS safety checks ------------------------------------------
 
 macro: stash
@@ -458,11 +458,11 @@ macro: trash
 		s" Unmatched -> or ;; in definition of " 2 warning
 		0 pattern-match-depth !
 	endif
-	semicolon-behaviour @ call
+	done-compiling
 ; 
 
 macro: ;   _done ;
-)
+
 -- structures
 macro: struct:
 	create-word
@@ -470,10 +470,9 @@ macro: struct:
 	' lit ,
 	here push 0 ,
 	' allot ,
-	' done ,
+	done-compiling
 	pop
 	0
-	interpret-mode
 	-- s" struct: " puts
 	-- dup putn 
 ;
@@ -488,9 +487,8 @@ macro: end
 	create-word
 	swap dup compile-literal
 	' + ,
-	' done ,
+	done-compiling
 	+
-	interpret-mode
 	-- spc dup putn
 ;
 macro: cell: ( tot n -- tot' )
@@ -654,5 +652,40 @@ macro: see-data-stack
 ;
 : today ( -- date ) now drop ;
 : time  ( -- time ) now nip  ;
+
+
+( The following macros are wrappers that combine the behaviour of the output
+functions (put*) with forcing execution of the immediate code area, based on
+the observation that the most common use-case in the repl is evaluating an
+expression )
+
+macro: =  ( n -- )
+	-- output a base 10 number
+	' putn , go
+;
+macro: =h ( n -- )
+	-- same for hex
+	' putx , go
+;
+macro: =o ( n -- )
+	-- and octal
+	8 compile-literal
+	' putnumber , go
+;
+macro: =b ( n -- )
+	-- and binary
+	2 compile-literal
+	' putnumber , go
+;
+macro: =d ( d -- )
+	-- output a decimal
+	' putd , go
+;
+macro: =date ( date -- )
+	' putdate , go
+;
+macro: =time ( time -- )
+	' puttime , go
+;
 
 -- vim:ft=cantilever

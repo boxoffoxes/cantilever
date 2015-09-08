@@ -1,6 +1,13 @@
 #!/bin/bash
 
-CLVR_DIR=~/Common/Sources/Cantilever
+SCR_PATH="`readlink $0`"
+CLVR_DIR="`dirname $SCR_PATH`/../"
+if [ -z "$CLVR_DIR" ]; then
+	echo "You should symlink the cantilever script in Misc"
+	echo "into your path"
+	exit 1
+fi
+
 CLVR="$CLVR_DIR/cantilever"
 CLVR_LIB="$CLVR_DIR/foundation.clvr"
 WRAP=
