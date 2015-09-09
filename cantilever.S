@@ -1180,13 +1180,18 @@ word compiling
 	.long dictPtr, get, dpSet
 end
 word doneCompiling, "done-compiling"
-	.long quote, return, storeinc
 	.long here, dictPtr, set
 	.long anonymousCode
 end
-word semiColon, ";", mlink
-	# todo: add check that code is not anonymous
+word compileSemi "compile-;"
+	.long quote, return, storeinc
+	.long here, isAnonymous, zbranch, JUMP(1f)
+	.long tailcall, go
+1:
 	.long doneCompiling
+end
+word semiColon, ";", mlink
+	.long tailcall, compileSemi
 end
 word go
 	.long quote, return, storeinc
@@ -1194,11 +1199,6 @@ word go
 	.long anonymousCode
 	.long prompt
 end
-word dot, ".", mlink
-	# todo: add check that code is anonymous
-	.long go
-end
-
 
 
 

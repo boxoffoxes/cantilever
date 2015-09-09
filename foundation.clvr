@@ -456,7 +456,7 @@ macro: trash
 		s" Unmatched -> or ;; in definition of " 2 warning
 		0 pattern-match-depth !
 	endif
-	done-compiling
+	compile-;
 ; 
 
 macro: ;   _done ;
@@ -468,7 +468,7 @@ macro: struct:
 	' lit ,
 	here push 0 ,
 	' allot ,
-	done-compiling
+	compile-;
 	pop
 	0
 	-- s" struct: " puts
@@ -485,7 +485,7 @@ macro: end
 	create-word
 	swap dup compile-literal
 	' + ,
-	done-compiling
+	compile-;
 	+
 	-- spc dup putn
 ;
