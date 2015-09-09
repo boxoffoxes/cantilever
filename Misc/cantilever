@@ -16,4 +16,4 @@ if [ -n "`type -f rlwrap`" ]; then
 	WRAP="rlwrap -b '' -f $CLVR_LIB -f . -pPurple"
 fi
 
-exec $WRAP $CLVR $CLVR_LIB
+exec $WRAP $CLVR $CLVR_LIB $@

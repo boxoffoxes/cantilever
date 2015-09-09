@@ -75,11 +75,7 @@ prim_\label:
 
 .macro word label, name, dict=link, handler=do
 	header \label, "\name", \dict
-#ifdef CANTILEVER_PROFILE
 	.long 0
-#else
-	.long (99999f - \label) >> 2 // length of body
-#endif
 \label:
 	.long \handler
 word_\label:
@@ -186,7 +182,6 @@ _start:
 	mov %esp, %ebp
 	sub $DS_SIZE, %ebp
 	mov %ebp, var_rs0
-	# call allocate_memory
 	mov $cold_start, %esi
 next
 
@@ -452,7 +447,7 @@ prim eq, "eq?" // a b -- bool
 	push %ecx
 next
 
-prim neq, "not-eq?" // a b -- bool
+prim neq, "ne?" // a b -- bool
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -462,7 +457,7 @@ prim neq, "not-eq?" // a b -- bool
 	push %ecx
 next
 
-prim ge, "or-more?"
+prim ge, "ge?"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -472,7 +467,7 @@ prim ge, "or-more?"
 	push %ecx
 next
 
-prim gt, "more-than?"
+prim gt, "gt?"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -482,7 +477,7 @@ prim gt, "more-than?"
 	push %ecx
 next
 
-prim le, "or-less?"
+prim le, "le?"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -492,7 +487,7 @@ prim le, "or-less?"
 	push %ecx
 next
 
-prim lt, "less-than?"
+prim lt, "lt?"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -502,7 +497,7 @@ prim lt, "less-than?"
 	push %ecx
 next
 
-prim ult, "unsigned-less?"
+prim ltu, "ltu?"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -625,7 +620,7 @@ prim not
 next
 
 # Stack manipulation prims ###########################
-prim dsp, "dsp@"
+prim dspGet, "dsp@"
 	push %esp
 next
 
@@ -766,6 +761,18 @@ prim align // addr -- addr
 	add $3, %eax
 	andb $0xfc, %al
 	push %eax
+next
+
+prim isAnonymous "is-anon?" # addr -- bool
+	# is addr in the anonymous area?
+	mov var_anonCodeAreaAddr, %edx
+	pop %eax
+	sub %edx, %eax
+	xor %edx, %edx
+	cmp $SCRATCH_SIZE, %eax
+	seta %dl
+	dec %edx
+	push %edx
 next
 
 # Flow control #######################################
@@ -1451,6 +1458,13 @@ word bufferFile "buffer-file"  # str -- addr len fd
 	.long bufferZFile
 end
 
+word incVar "inc-var"
+	.long stash, get, inc, pop, set
+end
+word decVar "dec-var"
+	.long stash, get, dec, pop, set
+end
+
 
 .section .data
 .align CELL_SIZE, 0
@@ -1539,7 +1553,7 @@ word put   # zstr len --
 end
 
 word putc  # c --
-	.long dsp, one, put
+	.long dspGet, one, put
 	.long drop # drop on-stack buffer
 end
 
@@ -1642,7 +1656,6 @@ word report
 	.long rsReport, puts,   rsDepth, putn
 	.long nl
 end
-
 
 
 # Words that create words ############################
@@ -1753,7 +1766,21 @@ word wordOrNumber // word -- n bool
 	.long compileError
 end
 
+variable DataStackUnderflow
+variable DataStackOverflow
+
+word checkStacks "check-stacks"
+	.long dspGet, ds0, get, gt, zbranch, JUMP(1f)
+	.long DataStackUnderflow, raise
+1:
+	.long dspGet, rs0, get, le, zbranch, JUMP(2f)
+	.long DataStackOverflow, raise
+2:
+end
+
+
 word interpret
+#	.long checkStacks
 	.long word, stash, findMacro, dup
 	.long zbranch, JUMP(1f)
 	// it's a macro
@@ -1782,6 +1809,10 @@ end
 
 string dsReport "  ds: "
 string rsReport "  rs: "
+
+word hardReset "hard-reset"
+	.long ds0, get, dspSet, reset
+end
 
 .section .rodata
 
@@ -1839,6 +1870,7 @@ string DefaultPrompt, "\n ok: "
 
 variable decimal_places, 0, "decimal-places"
 
+variable main
 variable promptText, str_DefaultPrompt, "prompt-text"
 variable interpreter, interpret
 variable macros, mlink

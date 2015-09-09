@@ -2,8 +2,6 @@
 10 constant: '\n'
 27 constant: '\e'
 
-2 decimal-places ! 
-
 : end-of-comment? '\n' eq? ;
 macro: -- ' end-of-comment? scan   drop  ;
 -- now we have comments. Yay!
@@ -83,8 +81,8 @@ exception: ZStringTransformationNotImplemented
 -- : between? -- n a b -- bool
 -- 	--  a <= n <= b
 -- 	push push dup
--- 	pop or-more? swap
--- 	pop or-less? 
+-- 	pop ge? swap
+-- 	pop le? 
 -- 	and
 -- ;
 
@@ -585,7 +583,7 @@ macro: see-data-stack
 	stash  31 +   5 *  5Months div   2 +
 	pop   over 1+   5Months *   5 div   -   123 +
 	push
-	dup 13 or-more? if
+	dup 13 ge? if
 		12 -
 	endif
 	pop
@@ -617,10 +615,10 @@ macro: see-data-stack
 
 	pop _make-month
 	swap 
-	dup    9 or-less? if    '0' putc    endif
+	dup    9 le? if    '0' putc    endif
 	putn 
 	'-' putc
-	dup    9 or-less? if    '0' putc    endif
+	dup    9 le? if    '0' putc    endif
 	putn
 	
 
@@ -644,7 +642,7 @@ macro: see-data-stack
 ;
 
 60 60 24 * * constant: SecondsInADay
-1970-01-01 constant: UnixEpoch
+1970-01-01   constant: UnixEpoch
 : now ( -- date time )
 	-- WARNING: time is UTC.
 	0 SysTime syscall1
@@ -652,6 +650,14 @@ macro: see-data-stack
 ;
 : today ( -- date ) now drop ;
 : time  ( -- time ) now nip  ;
+
+: decimal-scaling-factor s" 1.0" number drop ;
+
+: decimal-places
+	prior: decimal-places ! 
+;
+
+2 decimal-places
 
 
 ( The following macros are wrappers that combine the behaviour of the output
@@ -687,5 +693,6 @@ macro: =date ( date -- )
 macro: =time ( time -- )
 	' puttime , go
 ;
+
 
 -- vim:ft=cantilever

@@ -2,7 +2,7 @@
 
 : _= ( n radix -- )
 	s" \t\e[32m = " puts
-	dup 10 = if
+	dup 10 eq? if
 		drop putn
 	else
 		putnumber
@@ -25,9 +25,9 @@
 	push dup pop _=
 ;
 
-: b:  2 literal ;
+( : b:  2 literal ;
 : o:  8 literal ;
-: h: 16 literal ;
+: h: 16 literal ; )
 
 : cancel
 	ds0 @ dsp!

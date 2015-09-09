@@ -132,35 +132,35 @@ section: Bit-shifting
 	[ -256 1 bits-down ] -128 test
 ;
 section: Comparisons
-	[  1 2 less-than? ] true test
-	[  1 0 less-than? ] false test
-	[  1 1 less-than? ] false test
-	[ -1 1 less-than? ] true test
+	[  1 2 lt? ] true test
+	[  1 0 lt? ] false test
+	[  1 1 lt? ] false test
+	[ -1 1 lt? ] true test
 
-	[  1 2 more-than? ] false test
-	[  1 0 more-than? ] true test
-	[  1 1 more-than? ] false test
-	[ -1 1 more-than? ] false test
+	[  1 2 gt? ] false test
+	[  1 0 gt? ] true test
+	[  1 1 gt? ] false test
+	[ -1 1 gt? ] false test
 
-	[  1 2 or-more? ] false test
-	[  1 0 or-more? ] true test
-	[  1 1 or-more? ] true test
-	[ -1 1 or-more? ] false test
+	[  1 2 ge? ] false test
+	[  1 0 ge? ] true test
+	[  1 1 ge? ] true test
+	[ -1 1 ge? ] false test
 	
-	[  1 2 or-less? ] true test
-	[  1 0 or-less? ] false test
-	[  1 1 or-less? ] true test
-	[ -1 1 or-less? ] true test
+	[  1 2 le? ] true test
+	[  1 0 le? ] false test
+	[  1 1 le? ] true test
+	[ -1 1 le? ] true test
 	
 	[  1 2 eq? ] false test
 	[  1 0 eq? ] false test
 	[  1 1 eq? ] true test
 	[ -1 1 eq? ] false test
 
-	[  1 2 not-eq? ] true test
-	[  1 0 not-eq? ] true test
-	[  1 1 not-eq? ] false test
-	[ -1 1 not-eq? ] true test
+	[  1 2 ne? ] true test
+	[  1 0 ne? ] true test
+	[  1 1 ne? ] false test
+	[ -1 1 ne? ] true test
 
 	[  1 2 matches? nip ] false test
 	[  1 0 matches? nip ] false test
