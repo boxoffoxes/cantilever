@@ -659,6 +659,19 @@ macro: see-data-stack
 
 2 decimal-places
 
+exception: CouldNotSleep
+
+: nsleep ( s ns -- )
+	-- sleep for s seconds and ns nanoseconds
+	push push
+	0 rsp@  SysNanosleep  syscall2
+	trash trash
+	if raise CouldNotSleep endif
+;
+: sleep ( n -- ) 
+	-- Sleep for n seconds
+	0 nsleep
+;
 
 ( The following macros are wrappers that combine the behaviour of the output
 functions (put*) with forcing execution of the immediate code area, based on

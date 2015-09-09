@@ -340,6 +340,7 @@ constant SysMunmap, __NR_munmap
 constant SysBrk,   __NR_brk
 constant SysIOCtl, __NR_ioctl
 constant SysTime,  __NR_time
+constant SysNanosleep, __NR_nanosleep
 
 # prims
 prim syscall0  # id -- result
