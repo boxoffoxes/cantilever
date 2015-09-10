@@ -522,6 +522,14 @@ prim mul, "*"  // int int -- int
 	// TODO: check for overflow
 next
 
+prim mulDiv, "*/" // int int int -- int
+	pop %ecx
+	pop %eax
+	imull (%esp)
+	idiv %ecx
+	mov %eax, (%esp)
+next
+
 prim udivmod  # int int -- int int
 	pop %ebx
 	pop %eax
@@ -1163,6 +1171,7 @@ word handleArgs
 1:
 	.long stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
+	.long welcome
 end
 
 word nextArg
@@ -1589,7 +1598,7 @@ word putx // n --
 end
 
 word clearBuffer
-	.long buffer, get
+	.long ioBuffer, get
 	.long bufend, set
 end
 
@@ -1608,7 +1617,7 @@ word error  // ... str n --
 	.long branch, JUMP(1b)
 2:
 	.long trash, nl   // newline
-	# .long clearBuffer
+	.long clearBuffer
 	.long errorHandler, get, call    // this should never return
 .long reset    // but this is here just in case
 
@@ -1617,11 +1626,13 @@ word fatalError, "fatal-error"
 .long one, exit
 
 word compileError, "compile-error"  # ... str n -- 
+	.long inChannel, get, isATTY, not, zbranch, JUMP(1f)
 	.long push, push, push
 	.long currentDef, get, label
 	.long InDefinition
 	.long pop, pop, pop, inc, inc
 	.long quote, fatalError, errorHandler, set
+1:
 .long error
 
 word warning
@@ -1852,7 +1863,7 @@ variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
 
-string WelcomeMessage "Welcome to Cantilever\n"
+string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
 string WarningPrefix, "--> Warning: [33m"
 string Error, "==> [31mError. [33m"
 string ResetColour, "[0m"

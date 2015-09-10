@@ -13,7 +13,7 @@ CLVR_LIB="$CLVR_DIR/foundation.clvr"
 WRAP=
 
 if [ -n "`type -f rlwrap`" ]; then
-	WRAP="rlwrap -b '' -f $CLVR_LIB -f . -pPurple"
+	WRAP="rlwrap -b '' -f $CLVR_DIR/Misc/all-words -f . -pPurple"
 fi
 
 exec $WRAP $CLVR $CLVR_LIB $@

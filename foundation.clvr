@@ -655,7 +655,18 @@ macro: see-data-stack
 	prior: decimal-places ! 
 ;
 
-2 decimal-places
+: *d  ( n d -- n )
+	-- multiply a number by a decimal, rescaling
+	-- the result to the same number of decimal
+	-- places as n
+	decimal-scaling-factor */
+;
+: /d   ( n d -- n )
+	-- ...same for division
+	decimal-scaling-factor swap */
+;
+
+2 decimal-places ;
 
 exception: CouldNotSleep
 
@@ -670,6 +681,13 @@ exception: CouldNotSleep
 	-- Sleep for n seconds
 	0 nsleep
 ;
+
+: dump-dicts
+	[ .label puts spc ] push
+	words peek each
+	macros pop each
+;
+
 
 ( The following macros are wrappers that combine the behaviour of the output
 functions (put*) with forcing execution of the immediate code area, based on
