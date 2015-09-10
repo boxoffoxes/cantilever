@@ -454,10 +454,10 @@ macro: trash
 		s" Unmatched -> or ;; in definition of " 2 warning
 		0 pattern-match-depth !
 	endif
-	compile-;
+	tail: compile-;
 ; 
 
-macro: ;   _done ;
+macro: ;  tail: _done ;
 
 -- structures
 macro: struct:
@@ -688,6 +688,41 @@ exception: CouldNotSleep
 	macros pop each
 ;
 
+
+: _find-word-for-addr  ( addr dict -- entry )
+	0 -> swap drop ;;
+	@ push
+	dup peek gt? if
+		drop pop return 
+	else
+		pop tail: _find-word-for-addr
+	endif
+;
+
+: find-word-for-addr ( addr -- entry? )
+	words _find-word-for-addr
+;
+
+: trace-line  ( addr -- )
+	stash putx spc
+	s" in " puts
+	peek is-anon? if
+		s" <anonymous area>" puts
+	else
+		peek find-word-for-addr
+		dup putx spc
+		.label puts
+	endif
+	trash nl
+;
+: backtrace
+	rsp@
+	rs-depth times
+		peek putn spc
+		dup @ trace-line
+		1 cell after
+	repeat
+;
 
 ( The following macros are wrappers that combine the behaviour of the output
 functions (put*) with forcing execution of the immediate code area, based on
