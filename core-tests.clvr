@@ -100,7 +100,7 @@ section: Date and time
 ;
 
 3 decimal-places !
-section: Fixed-point
+( section: Fixed-point
 	[ 1.0 ]     1000 test
 	[ 1.23 ]    1230 test
 	[ 1.234 ]   1234 test
@@ -114,7 +114,7 @@ section: Fixed-point
 	[ 0.00004 ]    4 test
 	[ 200.00007 ] 20000007 test
 
-;
+; )
 section: Bitwise operations
 	[ 0 not ] -1 test
 	[ 1 not ] -2 test
@@ -390,8 +390,8 @@ section: Tail-calls
 	[ 1000 non-tail-rs-depth-test   tail-rs-depth @ rs-depth - ] 1000 test
 ;
 
-: do-it! run-tests   test-report   profile-report ;
 
-# do-it!
+run-tests   test-report   profile-report  0 exit ;
+
 
 -- vim:ft=cantilever

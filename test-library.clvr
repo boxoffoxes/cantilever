@@ -24,7 +24,7 @@ variable: dotColumn
 ;
 
 macro: section:
-	compile-mode
+	compiling
 	'\n' compileString
 	test-library defword
 	' normal ,
@@ -42,7 +42,7 @@ macro: section:
 
 : run-tests
 	s" Executable name: " puts
-	argv @ @ putz nl
+	argv0 @ @ putz nl
 	test-library [ .cfa call ] each
 ;
 

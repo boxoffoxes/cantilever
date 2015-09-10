@@ -42,9 +42,6 @@ macro: exception:
 : compile-conditional-jump     ' zbranch compile-jump ;
 : jump-target   dup   here swap -   swap !  ;
 
-: inc-var   stash @ 1+   pop   !  ;
-: dec-var   stash @ 1-   pop   !  ;
-
 variable: if-nesting-depth
 macro: if   compile-conditional-jump   if-nesting-depth inc-var ;
 macro: else
@@ -390,6 +387,7 @@ macro: declare:
 	create-word
 	' not-imlemented ,
 	' return ,
+	done-compiling
 ;
 
 : implements
