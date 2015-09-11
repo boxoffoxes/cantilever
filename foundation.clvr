@@ -552,6 +552,7 @@ macro: see-data-stack
 
 -- Date, time and decimal output functions
 
+
 : puttime  ( t -- )
 	60 divmod swap
 	60 divmod swap
@@ -641,9 +642,21 @@ macro: see-data-stack
 
 60 60 24 * * constant: SecondsInADay
 1970-01-01   constant: UnixEpoch
+
+3600 constant: Hour
+variable: tz
+
+: hour Hour * ;
+
+: GMT ;
+: BST  1 hour + ;
+
+' BST tz !
+
 : now ( -- date time )
 	-- WARNING: time is UTC.
 	0 SysTime syscall1
+	tz @ call
 	SecondsInADay divmod push   UnixEpoch +   pop
 ;
 : today ( -- date ) now drop ;
