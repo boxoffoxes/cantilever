@@ -71,18 +71,6 @@ exception: ZStringTransformationNotImplemented
 	-- TODO: modify c: to use Unicode code points instead of raw UTF-8
 	-- TODO: modify putc to support multibyte chars
 
-: bool -- ( n -- bool )
-	if true else false endif
-;
-
--- : between? -- n a b -- bool
--- 	--  a <= n <= b
--- 	push push dup
--- 	pop ge? swap
--- 	pop le? 
--- 	and
--- ;
-
 : debug
 	WordBuffer puts spc
 	stash putn
@@ -771,5 +759,9 @@ macro: =time ( time -- )
 	' puttime , go
 ;
 
+macro: cancel
+	ds0 @ dsp!
+	reset
+;
 
 -- vim:ft=cantilever

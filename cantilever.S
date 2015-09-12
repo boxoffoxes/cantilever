@@ -438,6 +438,19 @@ prim match "matches?" # n1 n2 -- n1 bool
 	push %ecx
 next
 
+prim between "between?"  # n lower upper -- bool
+	pop %edx  # upper
+	pop %ecx  # lower
+	pop %eax  # n
+	sub %ecx, %edx
+	sub %ecx, %eax
+	xor %ecx, %ecx
+	cmp %edx, %eax
+	seta %cl
+	dec %ecx
+	push %ecx
+next
+
 prim eq, "eq?" // a b -- bool
 	pop %eax
 	pop %edx
@@ -626,6 +639,15 @@ prim not
 	pop %eax
 	not %eax
 	push %eax
+next
+
+prim bool
+	pop %eax
+	xor %edx, %edx
+	test %eax, %eax
+	setz %dl
+	dec %edx
+	push %edx
 next
 
 # Stack manipulation prims ###########################
@@ -1315,12 +1337,6 @@ word growHeap "grow-heap"  # n --
 	.long getBrkAddr, add, setBrkAddr, drop
 end
 
-word between, "between?"
-	.long push, push, dup
-	.long pop, ge, swap
-	.long pop, le, and
-end
-
 word exit0, "0-exit"
 	.long zero, exit
 end
@@ -1823,7 +1839,9 @@ string dsReport "  ds: "
 string rsReport "  rs: "
 
 word hardReset "hard-reset"
-	.long ds0, get, dspSet, reset
+	.long argv0, get, argv, set
+	.long ds0, get, dspSet
+	.long handleArgs, reset
 end
 
 .section .rodata
@@ -1859,6 +1877,7 @@ variable anonCodeAreaAddr, , "anon-code-area-addr"
 
 variable ds0
 variable rs0
+variable dp0
 variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
