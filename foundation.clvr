@@ -429,7 +429,7 @@ macro: trash
 	-- this gives us some static error checking on RS usage and nesting of conditionals
 	rs-usage @ if 
 		current-def @ .label
-		s" Unbalanced RS use in definition of " 2 warning
+		s" Possibly unbalanced RS use in definition of " 2 warning
 		0 rs-usage !
 	endif
 	if-nesting-depth @ if
