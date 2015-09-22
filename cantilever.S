@@ -256,7 +256,7 @@ next
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
 cold_start:
-	.long initialiseVM, reset
+	.long initialiseVM, tailcall, reset
 
 .align CELL_SIZE
 _error_wrap:
@@ -264,7 +264,7 @@ _error_wrap:
 
 .align CELL_SIZE
 _eof_wrap:
-	.long EndOfFile, raise, reset
+	.long EndOfFile, raise, tailcall, reset
 
 ######################################################
 # Forth-style code words                             #
@@ -1174,7 +1174,7 @@ word initialiseVM
 	#.long argv, get, one, cell, add, get
 	.long handleArgs
 1:
-	.long reset
+	.long tailcall, reset
 end
 
 word reset
@@ -1182,14 +1182,14 @@ word reset
 	.long rs0, get, rspSet 
 	.long anonymousCode
 	.long prompt
-	.long interpreter, get, call
+	.long interpreter, get, tailcall  // interpreter must not return!
 	.long tailcall, reset
 end
 
 word handleArgs
 	.long quote, handleArgs, handles, EndOfFile
 	.long nextArg, dup, zbranch, JUMP(1f)
-	.long dup, zopenIn, reset
+	.long dup, zopenIn, tailcall, reset
 1:
 	.long stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
@@ -1635,7 +1635,7 @@ word error  // ... str n --
 	.long trash, nl   // newline
 	.long clearBuffer
 	.long errorHandler, get, call    // this should never return
-.long reset    // but this is here just in case
+.long tailcall, reset    // but this is here just in case
 
 word fatalError, "fatal-error"
 	.long ErrorWasFatal, puts
@@ -1763,6 +1763,8 @@ word welcome
 end
 word prompt
 	.long inChannel, get, isATTY, zbranch, JUMP(0f)
+	.long nl, spc, putc, dsDepth, putn
+	.long lit, ',', putc, rsDepth, putn
 	.long promptText, get, puts
 0:
 end
@@ -1841,7 +1843,7 @@ string rsReport "  rs: "
 word hardReset "hard-reset"
 	.long argv0, get, argv, set
 	.long ds0, get, dspSet
-	.long handleArgs, reset
+	.long handleArgs, tailcall, reset
 end
 
 .section .rodata
@@ -1897,7 +1899,7 @@ string InvalidEsc, "Invalid escape char: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
 string ErrorWasFatal, "Error was fatal\n"
 string ErrorUnhandled, "Unhandled exception: "
-string DefaultPrompt, "\n ok: "
+string DefaultPrompt, " ok: "
 
 variable decimal_places, 0, "decimal-places"
 
