@@ -1,0 +1,54 @@
+1  constant: Jan
+2  constant: Feb
+3  constant: Mar
+4  constant: Apr
+5  constant: May
+6  constant: Jun
+7  constant: Jul
+8  constant: Aug
+9  constant: Sep
+10 constant: Oct
+11 constant: Nov
+12 constant: Dec
+
+: Months Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec ;
+
+
+1  constant: Mon
+2  constant: Tue
+3  constant: Wed
+4  constant: Thu
+5  constant: Fri
+6  constant: Sat
+7  constant: Sun
+
+: Days Mon Tue Wed Thu Fri Sat Sun ;
+
+
+: _short-time
+	explode-time   drop
+	push  dup leading-zero  putn   ':' putc
+	pop   dup leading-zero  putn
+;
+: _long-date
+	explode-date
+	putn  spc
+	' Months   swap cells after   @   cfa->label   @ puts   spc
+	dup leading-zero putn
+;
+: _weekday
+	2 -   7 mod 1+   push
+	' Days   pop cells after   @   cfa->label @   puts
+;
+
+: show-date-time
+	now  _short-time  spc spc  dup _weekday   spc _long-date
+;
+
+forever
+	show-date-time nl
+	10 sleep
+	report
+repeat ;
+
+-- vim:ft=cantilever
