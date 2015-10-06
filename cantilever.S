@@ -163,7 +163,7 @@ str_text_\label:
 # Initialisation #####################################
 
 .section .data
-constant heapBaseAddr . "heap-base-addr"
+constant HeapBaseAddr . "heap-base-addr"
 
 
 .section .text
@@ -833,6 +833,11 @@ prim tailcall, "tail:"
 	lea 4(%esi), %esi
 next
 
+prim tailcallTOS, "tailcall-tos"
+	pop %esi
+	lea 4(%esi), %esi
+next
+
 prim call
 	pop %eax
 	jmp *(%eax)
@@ -1182,7 +1187,7 @@ word reset
 	.long rs0, get, rspSet 
 	.long anonymousCode
 	.long prompt
-	.long interpreter, get, tailcall  // interpreter must not return!
+	.long interpreter, get, tailcallTOS
 	.long tailcall, reset
 end
 
@@ -1229,7 +1234,7 @@ word go
 	.long quote, return, storeinc
 	.long anonCodeAreaAddr, get, call
 	.long anonymousCode
-	.long prompt
+	.long tailcall, prompt
 end
 
 

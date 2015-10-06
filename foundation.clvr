@@ -758,10 +758,42 @@ macro: =date ( date -- )
 macro: =time ( time -- )
 	' puttime , go
 ;
+macro: =z ( zstr -- )
+	' putz , go
+;
+macro: =s ( str -- )
+	' puts , go
+;
 
 macro: cancel
 	ds0 @ dsp!
 	reset
+;
+
+
+1 constant: TypeNum
+2 constant: TypeXt
+3 constant: TypeAddr
+4 constant: TypeStr
+5 constant: TypeZStr
+
+
+
+: is-dict-addr?  ( n -- bool )
+	heap-base-addr here between?
+;
+: is-type-xt?
+	dup is-dict-addr? not   if drop false return endif
+	dup @
+	DoAddr      -> drop drop true ;;
+	DoDoesAddr  -> drop drop true ;;
+	DoConstAddr -> drop drop true ;;
+	_           -> 1 cell before eq? ;;
+;
+
+: get-type
+	-- heuristically determine the type of value on ToS
+	
 ;
 
 -- vim:ft=cantilever
