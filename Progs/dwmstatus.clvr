@@ -33,7 +33,7 @@
 : _long-date
 	explode-date
 	putn  spc
-	' Months   swap cells after   @   cfa->label   @ puts   spc
+	' Months   swap cells after   @   cfa->label @   puts   spc
 	dup leading-zero putn
 ;
 : _weekday
@@ -45,10 +45,30 @@
 	now  _short-time  spc spc  dup _weekday   spc _long-date
 ;
 
-forever
+
+-- hacky little X11 property setter...
+
+39  constant: XA_WM_NAME
+
+: init-x11-connection
+	'l'  putc ( byte order )
+	0    putc ( pad )
+	0 11 putc putc  ( proto major version )
+	0 0  putc putc  ( proto minor version )
+	0 0  putc putc ( n bytes auth proto )
+	0 0  putc putc ( n bytes auth string )
+	0 0  putc putc ( pad )
+;
+
+
+( forever
 	show-date-time nl
 	10 sleep
 	report
-repeat ;
+repeat ; )
+
+init-x11-connection 
+
+0 exit ;
 
 -- vim:ft=cantilever

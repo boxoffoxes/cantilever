@@ -693,7 +693,7 @@ exception: CouldNotSleep
 	0 -> swap drop ;;
 	@ push
 	dup peek gt? if
-		drop pop return 
+		drop suppress-macro: pop return 
 	else
 		pop tail: _find-word-for-addr
 	endif
