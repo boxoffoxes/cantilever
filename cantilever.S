@@ -1,5 +1,7 @@
 #include <asm/unistd.h>
+// #include <bits/socket.h>
 #include <asm/mman.h>
+// #include "inc/sys_defs.h"
 
 # Warnings: be very careful about using push 
 # and pop in non-Forth functions -- there's a
@@ -1044,8 +1046,8 @@ _date:
 #else
 	# We use Lilian Date, which is a count of days since the 
 	# start of the Gregorian calendar, where 15 Oct 1582 is 1 (_not_ 0!)
-	# Because of the algorithm used, dates before 1st March 1600 
-	# will be incorrect!
+	# However, because our algorithm uses unsigned arithmetic, dates 
+	# before 1st March 1600 will be incorrect!
 
 	# first calculate year offset from 1600
 	subl $1600, %eax
@@ -1292,6 +1294,11 @@ end
 variable EndOfFile, exit0
 
 
+# Sockets ############################################
+
+# constant SockDomainUnix AF_UNIX
+
+
 # Unfiled ############################################
 
 word digit_to_char, "digit-to-char" # n -- c
@@ -1331,12 +1338,12 @@ word getBrkAddr, "get-brk-addr"  #  -- addr
 	.long zero, setBrkAddr
 end
 word getHeapSize "get-heap-size"  # -- n
-	.long getBrkAddr, heapBaseAddr, sub
+	.long getBrkAddr, HeapBaseAddr, sub
 end
 
 # Todo: error handling on the following two functions
 word setHeapSize "set-heap-size"  # n --
-	.long heapBaseAddr, add, setBrkAddr, drop
+	.long HeapBaseAddr, add, setBrkAddr, drop
 end
 word growHeap "grow-heap"  # n --
 	.long getBrkAddr, add, setBrkAddr, drop

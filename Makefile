@@ -3,6 +3,7 @@ STEM=cantilever
 TARGET=$(STEM)
 # PROF_TARGET=$(STEM)-profile
 
+
 all: $(TARGET) Misc/all-words
 
 test: $(TARGET)
@@ -14,6 +15,10 @@ Misc/all-words : $(TARGET) foundation.clvr
 sloc: $(TARGET).S
 	cat $< | grep -v '^\s*$$' | grep -v '^\s*#[^a-z]' | grep -v '^\s*//' | wc -l
 
-$(TARGET): $(TARGET).S
+$(TARGET): $(TARGET).S inc/sys_defs.h
 	$(ASSEMBLER32) -o $@ $<
+
+
+inc/sys_defs.h : inc/required.h
+	cpp -dM $< > $@
 
