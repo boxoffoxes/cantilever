@@ -4,7 +4,9 @@ TARGET=$(STEM)
 # PROF_TARGET=$(STEM)-profile
 
 
-all: $(TARGET) Misc/all-words
+all: $(TARGET)
+
+# Misc/all-words
 
 test: $(TARGET)
 	./cantilever foundation.clvr test-library.clvr core-tests.clvr

@@ -3,10 +3,10 @@
 27 constant: '\e'
 
 : end-of-comment? '\n' eq? ;
-macro: -- ' end-of-comment? scan   drop  ;
+: -- #immediate ' end-of-comment? scan   drop  ;
 -- now we have comments. Yay!
 
-macro: c:
+: c: #immediate
 	-- compile a (possibly multi-byte) char
 	word
 	1 cell + @
@@ -33,7 +33,7 @@ macro: c:
 : prev-cell here 1 cell before ;
 : next-cell here 1 cell after ;
 
-macro: exception:
+: exception: #immediate
 	create-variable
 ;
 
@@ -43,13 +43,13 @@ macro: exception:
 : jump-target   dup   here swap -   swap !  ;
 
 variable: if-nesting-depth
-macro: if   compile-conditional-jump   if-nesting-depth inc-var ;
-macro: else
+: if   compile-conditional-jump   if-nesting-depth inc-var ; #immediate
+: else #immediate
 	compile-unconditional-jump push
 	jump-target
 	pop
 ;
-macro: endif   jump-target   if-nesting-depth dec-var  ;
+: endif   jump-target   if-nesting-depth dec-var  ; #immediate
 
 -- convert between string types
 : s->z  --   str -- zstr len
@@ -121,7 +121,7 @@ exception: ZStringTransformationNotImplemented
 	dup bool
 ;
 
-macro: (
+: ( #immediate
 	1   -- track the depth of the nesting
 	' _nested-comment while-word
 	drop
@@ -139,13 +139,13 @@ variable: rs-usage
 	current-def @ .label 
 	UnbalancedRSInBranch 2 warning 
 ;
-macro: ->
+: -> #immediate
 	' matches? ,
 	compile-conditional-jump
 	rs-usage @
 	pattern-match-depth inc-var
 ;
-macro: ;;
+: ;; #immediate
 	' return ,
 	rs-usage @  if   unbalanced-rs-error   endif
 	rs-usage !
@@ -153,7 +153,7 @@ macro: ;;
 	pattern-match-depth dec-var
 ;
 -- macro: _ ' dup , ;
-macro: _
+: _ #immediate
 	word drop   -- consume ->
 	scratchpad  -- somewhere for jump-target to write to
 	-- this is the last part of the match, so we don't keep rs-usage. Doing so 
@@ -172,9 +172,9 @@ macro: _
 	;;
 ;
 
-macro: bin:  2 base-literal compile-literal ;
-macro: oct:  8 base-literal compile-literal ;
-macro: hex: 16 base-literal compile-literal ;
+: bin:  2 base-literal compile-literal ; #immediate
+: oct:  8 base-literal compile-literal ; #immediate
+: hex: 16 base-literal compile-literal ; #immediate
 )
 : nextEntry @ ;
 
@@ -232,11 +232,11 @@ variable: stringTerminator
 	compile-literal
 ;
 
-macro: s"
+: s" #immediate
 	'"' compileInlineString
 ;
 
-macro: z"
+: z" #immediate
 	compile-unconditional-jump
 	'"' compileZString
 	swap jump-target
@@ -271,7 +271,7 @@ variable: close-bracket-behaviour
 	' return ,
 	dp! anon-code-area-addr @ call
 ;
-macro: #[  (  -- oldDp prevBehav )
+: #[  (  -- oldDp prevBehav ) #immediate
 	close-bracket-behaviour @
 	' endImmedCodeBlock close-bracket-behaviour !
 	startImmedCodeBlock swap
@@ -284,10 +284,10 @@ macro: #[  (  -- oldDp prevBehav )
 	jump-target
 	compile-literal
 ;
-macro: again
+: again #immediate
 	anon-code-area-addr @ call
 ;
-macro: [  ( -- lambda jaddr prevBehav )
+: [  ( -- lambda jaddr prevBehav ) #immediate
 	-- s" [ " puts report
 	compile-unconditional-jump
 	here swap
@@ -298,7 +298,7 @@ macro: [  ( -- lambda jaddr prevBehav )
 ;
 
 -- generic code block closing function
-macro: ]  ( prevBehav -- )
+: ]  ( prevBehav -- ) #immediate
 	-- report
 	close-bracket-behaviour @ push
 	close-bracket-behaviour !
@@ -311,7 +311,7 @@ macro: ]  ( prevBehav -- )
 ' unmatchedBracket close-bracket-behaviour !
 
 
-macro: times
+: times #immediate
 	' push ,
 	here
 	' peek ,
@@ -322,7 +322,7 @@ macro: times
 	swap
 ;
 
-macro: forever
+: forever #immediate
 	-1 compile-literal
 	' push ,
 	here
@@ -331,7 +331,7 @@ macro: forever
 	swap
 ;
 
-macro: repeat
+: repeat #immediate
 	next-cell -
 	compile-unconditional-jump
 	!
@@ -369,7 +369,7 @@ macro: repeat
 	2 compile-error
 ;
 
-macro: declare:
+: declare: #immediate
 	-- allow forward declarations. Provide an implementation
 	-- using 'implements:'
 	create-word
@@ -386,13 +386,13 @@ macro: declare:
 	' return pop 1 cell after !   -- 
 ;
 
-macro: prior: 
+: prior:  #immediate
 	-- compile a word, ignoring the currently in-progress definition
 	word dup current-def @ find
 	0 -> drop NotFound 2 compile-error ;;
 	_ -> .cfa , drop ;;
 ;
-macro: suppress-macro:
+: suppress-macro: #immediate
 	word dup words find
 	0 -> drop NotFound 2 compile-error ;;
 	_ -> .cfa , drop ;;
@@ -408,19 +408,19 @@ macro: suppress-macro:
 
 -- RS safety checks ------------------------------------------
 
-macro: stash
+: stash #immediate
 	rs-usage inc-var
 	' suppress-macro: stash ,
 ;
-macro: push
+: push #immediate
 	rs-usage inc-var
 	' suppress-macro: push ,
 ;
-macro: pop
+: pop #immediate
 	rs-usage dec-var
 	' suppress-macro: pop ,
 ;
-macro: trash
+: trash #immediate
 	rs-usage dec-var
 	' suppress-macro: trash ,
 ;
@@ -445,10 +445,10 @@ macro: trash
 	tail: compile-;
 ; 
 
-macro: ;  tail: _done ;
+: ;  tail: _done ; #immediate
 
 -- structures
-macro: struct:
+: struct: #immediate
 	create-word
 	' here ,
 	' lit ,
@@ -460,7 +460,7 @@ macro: struct:
 	-- s" struct: " puts
 	-- dup putn 
 ;
-macro: end
+: end #immediate
 	-- s" link" findWord putx
 	-- dup putn spc
 	-- nl
@@ -475,12 +475,12 @@ macro: end
 	+
 	-- spc dup putn
 ;
-macro: cell: ( tot n -- tot' )
+: cell: ( tot n -- tot' ) #immediate
 	1 cell _field
 ;
-macro: field: _field ;
+: field: _field ; #immediate
 
-macro: sizeof: ( -- n )
+: sizeof: ( -- n ) #immediate
 	word findWord .pfa 2 cells after @ align compile-literal
 ;
 
@@ -511,7 +511,7 @@ macro: sizeof: ( -- n )
 	nl
 ;
 
-macro: see-data-stack
+: see-data-stack #immediate
 	current-def @ .label compile-literal
 	' puts ,
 	':' compile-literal
@@ -733,42 +733,42 @@ functions (put*) with forcing execution of the immediate code area, based on
 the observation that the most common use-case in the repl is evaluating an
 expression )
 
-macro: =  ( n -- )
+: =  ( n -- )  #immediate
 	-- output a base 10 number
 	' putn , go
 ;
-macro: =h ( n -- )
+: =h ( n -- ) #immediate
 	-- same for hex
 	' putx , go
 ;
-macro: =o ( n -- )
+: =o ( n -- ) #immediate
 	-- and octal
 	8 compile-literal
 	' putnumber , go
 ;
-macro: =b ( n -- )
+: =b ( n -- ) #immediate
 	-- and binary
 	2 compile-literal
 	' putnumber , go
 ;
-macro: =d ( d -- )
+: =d ( d -- ) #immediate
 	-- output a decimal
 	' putd , go
 ;
-macro: =date ( date -- )
+: =date ( date -- ) #immediate
 	' putdate , go
 ;
-macro: =time ( time -- )
+: =time ( time -- ) #immediate
 	' puttime , go
 ;
-macro: =z ( zstr -- )
+: =z ( zstr -- ) #immediate
 	' putz , go
 ;
-macro: =s ( str -- )
+: =s ( str -- ) #immediate
 	' puts , go
 ;
 
-macro: cancel
+: cancel #immediate
 	ds0 @ dsp!
 	reset
 ;

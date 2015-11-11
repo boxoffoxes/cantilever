@@ -22,6 +22,7 @@
 
 // #define CANTILEVER_COMPILATION_TRACE
 // #define CANTILEVER_EXECUTION_TRACE
+// #define CANTILEVER_STACK_TRACE
 // #define CANTILEVER_CHEAP_DATE
 
 
@@ -30,6 +31,7 @@
 #else
 #define TRACE_CODE
 #endif
+
 
 ######################################################
 # macros                                             #
@@ -221,6 +223,7 @@ _space_buffer:
 	.space 128, ' '
 .align CELL_SIZE
 _trace:
+	# print spaces based on return stack depth
 	push %eax
 	mov var_rs0, %edx
 	mov $2, %ebx
@@ -228,14 +231,14 @@ _trace:
 	mov $_space_buffer, %ecx
 	sub %ebp, %edx
 	int $0x80
-
+	# print function name
 	mov (%esp), %eax
 	mov (LFA_OFFS-CFA_OFFS)(%eax), %ecx
 	mov (%ecx), %edx
 	add $CELL_SIZE, %ecx
 	mov $__NR_write, %eax
 	int $0x80
-
+	# print return char
 	mov $__NR_write, %eax
 	push $10
 	mov %esp, %ecx
@@ -782,12 +785,12 @@ prim getByte, "@b"
 	push %eax
 next
 
-prim set "!" // int addr -- 
+prim set "!" # int addr -- 
 	pop %eax
 	pop %edx
 	mov %edx, (%eax)
 next
-prim setByte "!b" // int addr -- 
+prim setByte "!b" # int addr -- 
 	pop %eax
 	pop %edx
 	mov %dl, (%eax)
@@ -1212,17 +1215,13 @@ word initialiseVM
 	#.long argv, get, one, cell, add, get
 	.long handleArgs
 1:
-	.long tailcall, reset
+	.long welcome, tailcall, reset
 end
 
 word reset
-1:
 	.long rs0, get, rspSet 
-	.long anonymousCode
-	.long prompt
-	.long interpreter, get, tailcallTOS
-	.long tailcall, reset
-end
+	.long interpreter, get
+.long tailcallTOS
 
 word handleArgs
 	.long quote, handleArgs, handles, EndOfFile
@@ -1231,7 +1230,6 @@ word handleArgs
 1:
 	.long stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
-	.long welcome
 end
 
 word nextArg
@@ -1240,13 +1238,13 @@ word nextArg
 	.long get
 end
 
-
 word anonymousCode
 	.long anonCodeAreaAddr, get, dpSet
 	.long quote, do, storeinc
+	.long tailcall, prompt
 end
 word compiling
-	.long go    # evaluate any args (e.g. for constant: or create)
+	.long compileSemi    # evaluate any args (e.g. for constant: or create)
 	.long dictPtr, get, dpSet
 end
 word doneCompiling, "done-compiling"
@@ -1256,18 +1254,13 @@ end
 word compileSemi "compile-;"
 	.long quote, return, storeinc
 	.long here, isAnonymous, zbranch, JUMP(1f)
-	.long tailcall, go
+	.long anonCodeAreaAddr, get, call
+	.long anonymousCode, return
 1:
 	.long doneCompiling
 end
 word semiColon, ";", call
 	.long tailcall, compileSemi
-end
-word go
-	.long quote, return, storeinc
-	.long anonCodeAreaAddr, get, call
-	.long anonymousCode
-	.long tailcall, prompt
 end
 
 
@@ -1573,6 +1566,10 @@ word each  # dict fun --
 end
 
 
+word notFoundHandler "not-found-handler"
+	.long puts, NotFound, puts, nl
+.long reset
+
 word find // str -- xt behav
 	.long push  # save str
 	.long dictionary
@@ -1582,10 +1579,10 @@ word find // str -- xt behav
 	.long zbranch, JUMP(1b)
 	.long dup, cfa, swap, behaviour, trash, return
 2:
-	.long peek, number, zbranch, JUMP(3f)
+	.long drop, peek, number, zbranch, JUMP(3f)
 	.long quote, compileLiteral, trash, return
 3:
-	.long pop, NotFound, raise
+	.long pop, NotFoundException, raise
 end
 
 word lfa, ".lfa"  # entry -- addr
@@ -1733,13 +1730,15 @@ end
 
 # Words that create words ############################
 
-word header  // str --
+word header  # str --
 	.long dpAlign
-	.long here, push                # keep DP for later     -- str / dp
-	.long dictionary, get, storeinc # compile link to current head of dict  -- str / dict dp
-	.long storeinc                  # compile label address  -- / dict dp
-	.long pop, dictionary, set      # set our address as new head of dict  -- /
+	.long here, push
+	.long dictionary, get, storeinc  # compile link to current head of dict
+	.long storeinc                   # compile label address
+	.long quote, storeinc, storeinc  # store the default behaviour
+	.long pop, dictionary, set       # store our new word in the dict
 end
+
 word define  #  str interp --
 	.long push, header, pop, storeinc
 end
@@ -1759,7 +1758,7 @@ word defvar    # val str --
 end
 
 
-word createDoes  # behav --
+word createDoes, "create-does"  # behav --
 	.long compiling
 	.long word, keeps, defdoes, storeinc # , lit, return, storeinc
 	.long doneCompiling
@@ -1782,7 +1781,9 @@ word createWord, "create-word"
 	.long compiling
 	.long word, keeps, defword
 end
-
+word immed, "#immediate", call
+	.long dictionary, get, bfa, call, set
+end
 
 word constantColon, "constant:", call
 	.long createConstant
@@ -1820,6 +1821,7 @@ word checkStacks "check-stacks"
 end
 
 word interpret
+	.long anonymousCode
 1:
 	.long word, find, call
 	.long branch, JUMP(1b)
@@ -1867,6 +1869,8 @@ variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
 
+variable NotFoundException, notFoundHandler
+
 string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
 string WarningPrefix, "--> Warning: [33m"
 string Error, "==> [31mError. [33m"
@@ -1875,8 +1879,7 @@ string InDefinition, "\n\tfollowing defintion of "
 string At, "\" at [31m"
 string byebye, "\n-- Toodle-pip!\n"
 string TooLong, "Word too long: "
-string NotFound, " not found"
-string NumParse, "Invalid number: \""
+string NotFound, " is neither a dictionary word or a number\n"
 string InvalidEsc, "Invalid escape char: "
 # string FileOpenFailed, "Could not open file: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
