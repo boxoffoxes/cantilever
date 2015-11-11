@@ -14,28 +14,35 @@
 .set CELL_SIZE, (1<<CELL_BITS)
 .set DS_SIZE, (64*CELL_SIZE)
 .set link, 0
-.set mlink, 0
 
-#define BASE_4_YEAR 1461
-#define LILIAN_CORRECTION 6345
+.set BASE_4_YEAR, 1461
+.set LILIAN_CORRECTION, 6345
+
+// #define CANTILEVER_COMPILATION_TRACE
+// #define CANTILEVER_EXECUTION_TRACE
+// #define CANTILEVER_CHEAP_DATE
+
+
+#ifdef CANTILEVER_EXECUTION_TRACE
+#define TRACE_CODE call _trace
+#else
+#define TRACE_CODE
+#endif
 
 ######################################################
 # macros                                             #
 ######################################################
 
 #define JUMP(tgt) (tgt - .)
-#ifdef CANTILEVER_PROFILE
-#define PROFILING_CODE \
-	mov -4(%eax), %edx ; \
-	inc %edx ; \
-	mov %edx, -4(%eax) ;
-#else
-#define PROFILING_CODE
-#endif
 
 # Structural macros ##################################
 
-.macro header label, name, dict=link
+.set LFA_OFFS, (1*CELL_SIZE)
+.set BFA_OFFS, (2*CELL_SIZE)
+.set CFA_OFFS, (3*CELL_SIZE)
+.set PFA_OFFS, (4*CELL_SIZE)
+
+.macro header label, name, behav
 	.section .data
 	.align CELL_SIZE, 0
 dict_label_\label:
@@ -49,33 +56,24 @@ dict_label_\label:
 	100001:
 	.align CELL_SIZE, 0
 dict_\label:
-	.long \dict
+	.long link
 	.long dict_label_\label
-.set \dict, dict_\label
+	.long \behav
+.set link, dict_\label
 .endm
 
-.macro prim label, name, dict=link
-	header \label, "\name", \dict
-#ifdef CANTILEVER_PROFILE
-	.long 0
-#else
-	.long 1 // length is always 1 for prims
-#endif
+.macro prim label, name, behav=storeinc
+	header \label, "\name", \behav
 \label:
 	.long prim_\label
 	.section .text
 	.align CELL_SIZE
 prim_\label:
-#ifdef CANTILEVER_PROFILE
-	mov -4(%eax), %edx
-	inc %edx
-	mov %edx, -4(%eax)
-#endif
+	TRACE_CODE
 .endm
 
-.macro word label, name, dict=link, handler=do
-	header \label, "\name", \dict
-	.long 0
+.macro word label, name, behav=storeinc, handler=do
+	header \label, "\name", \behav
 \label:
 	.long \handler
 word_\label:
@@ -86,11 +84,10 @@ word_\label:
 	# push $\val
 	# next
 	.int \val
-99999:
 .endm
 
 .macro variable label, val=0, name
-	constant \label, var_\label, "\name"
+	word \label, "\name", , dovar
 var_\label:
 	.long \val
 .endm
@@ -116,7 +113,6 @@ str_text_\label:
 
 .macro end
 	.long return
-	99999:
 .endm
 
 .macro string_len_in_cells reg
@@ -218,6 +214,36 @@ _eof:
 	mov $_eof_wrap, %esi
 next
 
+#ifdef CANTILEVER_EXECUTION_TRACE
+_space_buffer:
+	.space 128, ' '
+.align CELL_SIZE
+_trace:
+	push %eax
+	mov var_rs0, %edx
+	mov $2, %ebx
+	mov $__NR_write, %eax
+	mov $_space_buffer, %ecx
+	sub %ebp, %edx
+	int $0x80
+
+	mov (%esp), %eax
+	mov (LFA_OFFS-CFA_OFFS)(%eax), %ecx
+	mov (%ecx), %edx
+	add $CELL_SIZE, %ecx
+	mov $__NR_write, %eax
+	int $0x80
+
+	mov $__NR_write, %eax
+	push $10
+	mov %esp, %ecx
+	mov $1, %edx
+	int $0x80
+	pop %ecx
+	pop %eax
+ret
+#endif
+
 .align CELL_SIZE
 _word:  // copy the next word into wordbuffer
 	// skip whitespace
@@ -274,15 +300,22 @@ _eof_wrap:
 
 .align CELL_SIZE
 do:
+TRACE_CODE
 	pushrs %esi  // save return address
 	lea 4(%eax), %esi
-	PROFILING_CODE
 next
 
 .align CELL_SIZE
 doconst:
 	push 4(%eax)
-	PROFILING_CODE
+TRACE_CODE
+next
+
+.align CELL_SIZE
+dovar:
+	lea 4(%eax), %edx
+	push %edx
+TRACE_CODE
 next
 
 # The black-magic of forth: data with behaviour.
@@ -304,7 +337,6 @@ next
 # 	lea 8(%eax), %eax
 # 	lea 4(%esi), %esi
 # 	push %eax
-# 	PROFILING_CODE
 # next
 
 # dodoes:
@@ -321,7 +353,6 @@ dodoes:
 	lea 8(%eax), %edx
 	mov 4(%eax), %eax
 	push %edx
-	PROFILING_CODE
 jmp *(%eax)
 
 
@@ -1222,7 +1253,7 @@ word compileSemi "compile-;"
 1:
 	.long doneCompiling
 end
-word semiColon, ";", mlink
+word semiColon, ";", call
 	.long tailcall, compileSemi
 end
 word go
@@ -1349,7 +1380,7 @@ word exit #  n --
 	.long SysExit, syscall1
 end
 
-word bye, , mlink
+word bye, , call
 	.long byebye, puts, nl
 	.long zero, exit
 end
@@ -1530,44 +1561,46 @@ word each  # dict fun --
 end
 
 
-word find // str dict -- entry
-	.long swap, push  # save str
+word find // str -- xt behav
+	.long push  # save str
+	.long dictionary
 1:
 	.long get, dup, zbranch, JUMP(2f), dup, label
 	.long peek, strEq
 	.long zbranch, JUMP(1b)
+	.long dup, cfa, swap, behaviour, trash, return
 2:
-	.long trash
+	.long peek, number, zbranch, JUMP(3f)
+	.long quote, compileLiteral, trash, return
+3:
+	.long pop, NotFound, raise
 end
 
 word lfa, ".lfa"  # entry -- addr
-	.long lit, CELL_SIZE, add
+	.long lit, LFA_OFFS, add
 end
-
-variable ProfilingNotEnabled
-#ifdef CANTILEVER_PROFILE
-word xCount ".xcount"
-	.long lit, 2 * CELL_SIZE, add
-end
-#else
-word xCount ".xcount"
-	.long ProfilingNotEnabled, raise
-end
-word dotLen, ".len"
-	.long lit, 2 * CELL_SIZE, add
-end
-#endif
 
 word cfa, ".cfa" // entry -- codeAddr
-	.long lit, 3 * CELL_SIZE, add
+	.long lit, CFA_OFFS, add
+end
+
+word bfa, ".bfa"
+	.long lit, BFA_OFFS, add
 end
 
 word pfa, ".pfa"
-	.long lit, 4 * CELL_SIZE, add
+	.long lit, PFA_OFFS, add
 end
 
 word label, ".label"  // entry -- str
 	.long lfa, get
+end
+word behaviour, ".behaviour" 
+	.long bfa, get
+end
+word cfaToLabel, ".cfa->.label"
+	.long lit, CFA_OFFS, sub
+	.long label
 end
 
 word warn  # zstr len -- 
@@ -1644,7 +1677,7 @@ word fatalError, "fatal-error"
 word compileError, "compile-error"  # ... str n -- 
 	.long inChannel, get, isATTY, not, zbranch, JUMP(1f)
 	.long push, push, push
-	.long currentDef, get, label
+	.long dictionary, get, label
 	.long InDefinition
 	.long pop, pop, pop, inc, inc
 	.long quote, fatalError, errorHandler, set
@@ -1688,72 +1721,65 @@ end
 
 # Words that create words ############################
 
-word header  // str dict --
-	.long stash  # -- str dict / dict
+word header  // str --
 	.long dpAlign
-	.long here, push               # keep DP for later     -- str dict / dict dp
-	.long get, storeinc          # compile link to to current head of dict   -- str  / dict dp
-	.long storeinc                 # compile label address  -- / dict dp
-	.long zero, storeinc         # compile length/xcount field   -- / dict dp
-	.long peek, currentDef, set  # save our def as currentDef  -- / dict dp
-	.long pop, pop, set          # set our address as new head of dict  -- /
+	.long here, push                # keep DP for later     -- str / dp
+	.long dictionary, get, storeinc # compile link to current head of dict  -- str / dict dp
+	.long storeinc                  # compile label address  -- / dict dp
+	.long pop, dictionary, set      # set our address as new head of dict  -- /
 end
-word define  #  str dict interp --
+word define  #  str interp --
 	.long push, header, pop, storeinc
 end
 
 
-word defdoes   # str dict --
+word defdoes   # str --
 	.long quote, dodoes, define
 end
-word defword   # str dict -- 
+word defword   # str -- 
 	.long quote, do, define
 end
-word defconst  # val str dict -- 
+word defconst  # val str -- 
 	.long quote, doconst, define
+end
+word defvar    # val str --
+	.long quote, dovar, define
 end
 
 
-word create  # behav --
+word createDoes  # behav --
 	.long compiling
-	.long word, keeps, words, defdoes, storeinc # , lit, return, storeinc
+	.long word, keeps, defdoes, storeinc # , lit, return, storeinc
 	.long doneCompiling
 end
 word createConstant, "create-constant"  # val --
 	# constant: potentially needs to evaluate the preceding expression
 	# so there's a value waiting
 	.long compiling
-	.long word, keeps, words, defconst, storeinc
+	.long word, keeps, defconst, storeinc
 	.long doneCompiling
 end
 word createVariable, "create-variable"  # --
 	.long compiling
-	.long word, keeps, words, defconst
+	.long word, keeps, defvar
 	.long here, one, cell, add, storeinc
 	.long zero, storeinc
 	.long doneCompiling
 end
 word createWord, "create-word"
 	.long compiling
-	.long word, keeps, words, defword
-end
-word createMacro, "create-macro"
-	.long compiling
-	.long word, keeps, macros, defword
+	.long word, keeps, defword
 end
 
 
-word constantColon, "constant:", mlink
+word constantColon, "constant:", call
 	.long createConstant
 end
-word variableColon, "variable:", mlink
+word variableColon, "variable:", call
 	.long createVariable
 end
-word colon, ":", mlink
+word colon, ":", call
 	.long createWord
-end
-word macroColon, "macro:", mlink
-	.long createMacro
 end
 
 word welcome
@@ -1765,33 +1791,6 @@ word prompt
 	.long inChannel, get, isATTY, zbranch, JUMP(0f)
 	.long promptText, get, puts
 0:
-end
-
-word findWord   # word -- entry
-	.long words, find
-end
-
-word findMacro  # word -- entry
-	.long macros, find
-end
-
-word wordOrNumber // word -- n bool
-	.long stash, findWord, dup
-	.long zbranch, JUMP(1f)
-	// it's a word, get the CFA, clean RS and push -1
-	.long trash, cfa, minus_one
-	.long return
-1:
-	.long drop, peek, number
-	.long zbranch, JUMP(2f)
-	// it's a number, push 0
-	.long trash, zero
-	.long return
-2:
-	// error
-	.long drop, pop
-	.long NotFound, swap, lit, 2
-	.long compileError
 end
 
 variable DataStackUnderflow
@@ -1806,33 +1805,10 @@ word checkStacks "check-stacks"
 2:
 end
 
-
 word interpret
-#	.long checkStacks
-	.long word, stash, findMacro, dup
-	.long zbranch, JUMP(1f)
-	// it's a macro
-	.long trash, cfa, call
-	// .long branch, JUMP(0b)
-	.long tailcall, interpret
 1:
-	// maybe it's a word or number...
-	.long drop, pop, wordOrNumber  // errors handled here
-	.long zbranch, JUMP(2f)
-	.long compileWord
-	.long tailcall, interpret
-2:
-	// if it's a number
-	.long compileLiteral
-	.long tailcall, interpret
-end
-
-word immed, "#", mlink
-	.long word, wordOrNumber
-	.long zbranch, JUMP(1f)
-	.long call
-1:
-	// no special treatment needed for numnbers -- just leave on the stack
+	.long word, find, call
+	.long branch, JUMP(1b)
 end
 
 string dsReport "  ds: "
@@ -1846,17 +1822,12 @@ end
 
 .section .rodata
 
-constant DoAddr,      do
+constant DoAddr,      do, behav
 constant DoConstAddr, doconst
 constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
 constant CellBits, CELL_BITS
 constant CellSize, CELL_SIZE
-#ifdef CANTILEVER_PROFILE
-constant ProfilingEnabled, -1
-#else
-constant ProfilingEnabled, 0
-#endif
 #ifdef CANTILEVER_CHEAP_DATE
 constant CheapDate, -1
 #else
@@ -1904,6 +1875,4 @@ variable decimal_places, 0, "decimal-places"
 variable main
 variable promptText, str_DefaultPrompt, "prompt-text"
 variable interpreter, interpret
-variable macros, mlink
-variable currentDef, words, "current-def"
-variable words, link   # MUST BE LAST
+variable dictionary, link   # MUST BE LAST

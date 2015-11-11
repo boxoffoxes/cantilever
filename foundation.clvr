@@ -694,7 +694,11 @@ exception: CouldNotSleep
 	0 -> swap drop ;;
 	@ push
 	dup peek gt? if
-		drop pop return 
+		-- macro suppression to prevent spurious return stack 
+		-- usage warning. TODO remove suppression when if
+		-- blocks perform correct return-stack counting
+		-- gymnastics!
+		drop suppress-macro: pop return 
 	else
 		pop tail: _find-word-for-addr
 	endif
