@@ -1139,8 +1139,7 @@ next
 
 word initialiseVM
 	# initialise the dictionary pointer
-	.long getBrkAddr, dictPtr, set
-	.long dictPtr, get, dpSet
+	.long getBrkAddr, dup, dictPtr, set, dpSet
 	# allocate default heap
 	.long lit, HEAP_SIZE, setHeapSize
 	# create scratchpad
@@ -1226,8 +1225,9 @@ word raise  # excp --
 	.long dup, zbranch, JUMP(1f)   #  excp hndl
 	.long nip, call, return
 1:
-	.long drop, labelForVar, puts  #  lbl
-	.long ErrorUnhandled, puts, error
+	.long drop, labelForVar        #  lbl
+	.long ErrorUnhandled, puts
+	.long WarningColour, colour, puts, NoColour, colour, error
 end
 
 # Default handler for EOF is to exit. This is over-ridden
@@ -1642,7 +1642,6 @@ end
 word createVariable, "create-variable"  # --
 	.long useDict
 	.long word, keeps, defvar
-	.long here, one, cell, add, storeinc
 	.long zero, storeinc
 	.long useAnon
 end
