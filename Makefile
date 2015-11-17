@@ -17,10 +17,10 @@ Misc/all-words : $(TARGET) foundation.clvr
 sloc: $(TARGET).S
 	cat $< | grep -v '^\s*$$' | grep -v '^\s*#[^a-z]' | grep -v '^\s*//' | wc -l
 
-$(TARGET): $(TARGET).S inc/sys_defs.h
+$(TARGET): $(TARGET).S
 	$(ASSEMBLER32) -o $@ $<
 
 
-inc/sys_defs.h : inc/required.h
+inc/sys_defs.h :
 	cpp -dM $< > $@
 

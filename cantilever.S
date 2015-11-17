@@ -1209,6 +1209,9 @@ word initialiseVM
 	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
 	# set up an IO buffer
 	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
+	# initialise commandline flag handler
+	.long lit, (127-32), cell, buffer, flagTableAddr, set
+	.long quote, singleStepper, lit, 'S', flagHandler
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
@@ -1223,22 +1226,29 @@ word reset
 	.long interpreter, get
 .long tailcallTOS
 
-word handleArgs
+word initCommandlineFlags, "init-commandline-flags"
+end
+
+word handleArgs, "handle-args"
+	# first set this function to be our EOF handler
 	.long quote, handleArgs, handles, EndOfFile
+	# check if there's an argument left to handle
 	.long nextArg, dup, zbranch, JUMP(1f)
 	.long dup, zopenIn, tailcall, reset
 1:
+	# no args left: switch to reading stdin and
+	# reset EOF handler
 	.long stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
 end
 
-word nextArg
+word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
 	.long get
 end
 
-word anonymousCode
+word anonymousCode, "anonymous-code"
 	.long anonCodeAreaAddr, get, dpSet
 	.long quote, do, storeinc
 	.long tailcall, prompt
@@ -1306,12 +1316,12 @@ word handles
 	.long push
 end
 
-word raise
-	.long dup, get
-	.long dup, zbranch, JUMP(1f)
+word raise  # excp -- 
+	.long dup, get                 #  excp hndl
+	.long dup, zbranch, JUMP(1f)   #  excp hndl
 	.long nip, call, return
 1:
-	.long drop, labelForVar
+	.long drop, labelForVar        #  lbl
 	.long ErrorUnhandled, lit, 2, error
 end
 
@@ -1378,7 +1388,7 @@ word exit0, "0-exit"
 end
 
 word labelForVar, "label-for-var"
-	.long lit, 4, cell, sub, get
+	.long one, cell, sub, cfaToLabel
 end
 
 word exit #  n -- 
@@ -1423,11 +1433,11 @@ word close  # fh -- err
 	.long SysClose, syscall1
 end
 
-word closeOut
+word closeOut, "close-out"
 	.long outChannel, get, close
 	.long stdout, outChannel, set
 end
-word closeIn
+word closeIn, "close-in"
 	.long inChannel, get, close
 	.long stdin, inChannel, set
 end
@@ -1458,6 +1468,7 @@ word statFD "stat-fd"
 	.long pop
 end
 
+# Get the st_size field of the C stat struct
 word st_size ".st_size"
 	.long lit, 5, cell, add
 end
@@ -1865,6 +1876,7 @@ variable anonCodeAreaAddr, , "anon-code-area-addr"
 variable ds0
 variable rs0
 variable dp0
+variable flagTableAddr
 variable lastCompiled, 0, "last-compiled"
 variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
@@ -1879,7 +1891,7 @@ string InDefinition, "\n\tfollowing defintion of "
 string At, "\" at [31m"
 string byebye, "\n-- Toodle-pip!\n"
 string TooLong, "Word too long: "
-string NotFound, " is neither a dictionary word or a number\n"
+string NotFound, " is neither a dictionary word nor a number\n"
 string InvalidEsc, "Invalid escape char: "
 # string FileOpenFailed, "Could not open file: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
