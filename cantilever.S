@@ -12,6 +12,7 @@
 .set SCRATCH_SIZE, 16*1024     # 16k
 .set BUFFER_SIZE,  16*1024     #  4k
 .set WORD_BUFFER_SIZE, 256
+.set FLAG_TABLE_SIZE, (127-32) # non-space ASCII chars
 .set CELL_BITS, 2
 .set CELL_SIZE, (1<<CELL_BITS)
 .set DS_SIZE, (64*CELL_SIZE)
@@ -21,7 +22,7 @@
 .set LILIAN_CORRECTION, 6345
 
 // #define CANTILEVER_COMPILATION_TRACE
-// #define CANTILEVER_EXECUTION_TRACE
+//#define CANTILEVER_EXECUTION_TRACE
 // #define CANTILEVER_STACK_TRACE
 // #define CANTILEVER_CHEAP_DATE
 
@@ -287,11 +288,11 @@ next
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
 cold_start:
-	.long initialiseVM, tailcall, reset
+	.long initialiseVM
 
 .align CELL_SIZE
 _error_wrap:
-	.long lit, 2, compileError
+	.long lit, 2, error
 
 .align CELL_SIZE
 _eof_wrap:
@@ -335,22 +336,6 @@ next
 # but we remove the indirection as we have anonymous functions
 #
 .align CELL_SIZE
-# dodoes:
-# 	# we don't pushrs; so we're tail-calling behav
-# 	# pushrs %esi
-# 	mov 4(%eax), %esi
-# 	lea 8(%eax), %eax
-# 	lea 4(%esi), %esi
-# 	push %eax
-# next
-
-# dodoes:
-	# pushrs %esi
-	# lea 4(%eax), %esi
-	# lea 12(%eax), %eax
-	# push %eax
-# next
-
 dodoes:
 	# dodoes is effectively a tail-call. We jump directly to the 
 	# code field of behav instead of calling next so that we 
@@ -359,8 +344,6 @@ dodoes:
 	mov 4(%eax), %eax
 	push %edx
 jmp *(%eax)
-
-
 
 # System calls #######################################
 
@@ -431,9 +414,6 @@ variable inChannel, 0, "in-channel"
 variable outChannel, 1, "out-channel"
 variable errChannel, 2, "err-channel"
 
-# Where we read our source code from
-variable source, 0
-
 # NOTE: values are octal!
 constant ReadOnly,   0
 constant WriteOnly,  01101
@@ -444,25 +424,16 @@ prim key
 	push %eax
 next
 
-prim word  // -- str
+prim word  # -- str
 	call _word
-	// push the address and length
+	// push the address of temporary buffer
 	push $wordbuffer
 next
 
-prim digit  // char -- int
-	pop %eax
-	cmpb $'9', %al
-	jbe 1f
-	andb $0xdf, %al // make letters upper-case
-	cmpb $'A', %al
-	jb 2f   // error
-	subb $7, %al   // compact 
-1:
-	subb $'0', %al
-next
+# Logical and bitwise prims ##########################
 
-# Logical prims ######################################
+constant true, -1
+constant false, 0
 
 prim match "matches?" # n1 n2 -- n1 bool
 	# semi-destructive equals for pattern matching
@@ -474,7 +445,7 @@ prim match "matches?" # n1 n2 -- n1 bool
 	push %ecx
 next
 
-prim between "between?"  # n lower upper -- bool
+prim between "btw?"  # n lower upper -- bool
 	pop %edx  # upper
 	pop %ecx  # lower
 	pop %eax  # n
@@ -487,7 +458,7 @@ prim between "between?"  # n lower upper -- bool
 	push %ecx
 next
 
-prim eq, "eq?" // a b -- bool
+prim eq, "=" // a b -- bool
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -496,8 +467,7 @@ prim eq, "eq?" // a b -- bool
 	dec %ecx
 	push %ecx
 next
-
-prim neq, "ne?" // a b -- bool
+prim neq, "<>" // a b -- bool
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -506,8 +476,7 @@ prim neq, "ne?" // a b -- bool
 	dec %ecx
 	push %ecx
 next
-
-prim ge, "ge?"
+prim ge, ">="
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -516,8 +485,7 @@ prim ge, "ge?"
 	dec %ecx
 	push %ecx
 next
-
-prim gt, "gt?"
+prim gt, ">"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -526,8 +494,7 @@ prim gt, "gt?"
 	dec %ecx
 	push %ecx
 next
-
-prim le, "le?"
+prim le, "<="
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -536,8 +503,7 @@ prim le, "le?"
 	dec %ecx
 	push %ecx
 next
-
-prim lt, "lt?"
+prim lt, "<"
 	pop %eax
 	pop %edx
 	xor %ecx, %ecx
@@ -547,16 +513,45 @@ prim lt, "lt?"
 	push %ecx
 next
 
-prim ltu, "ltu?"
+prim and
 	pop %eax
-	pop %edx
-	xor %ecx, %ecx
-	cmpl %eax, %edx
-	setae %cl
-	dec %ecx
-	push %ecx
+	and %eax, (%esp)
+next
+prim or
+	pop %eax
+	or %eax, (%esp)
+next
+prim xor
+	pop %eax
+	xor %eax, (%esp)
+next
+prim not
+	pop %eax
+	not %eax
+	push %eax
 next
 
+prim bool
+	pop %eax
+	xor %edx, %edx
+	test %eax, %eax
+	setz %dl
+	dec %edx
+	push %edx
+next
+
+prim lshift, "shift-up" // int n -- int
+	pop %ecx
+	pop %eax
+	shl %cl, %eax
+	push %eax
+next
+prim rshift, "shift-down" // int n -- int
+	pop %ecx
+	pop %eax
+	sar %cl, %eax
+	push %eax
+next
 
 # Arithmetic prims ###################################
 
@@ -579,7 +574,7 @@ prim mulDiv, "*/" // int int int -- int
 	mov %eax, (%esp)
 next
 
-prim udivmod  # int int -- int int
+prim udivmod, "/modu" # int int -- int int
 	pop %ebx
 	pop %eax
 	xor %edx, %edx
@@ -587,7 +582,7 @@ prim udivmod  # int int -- int int
 	push %eax
 	push %edx
 next
-prim divmod  # int int -- int int
+prim divmod  "/mod" # int int -- int int
 	pop %ebx
 	pop %eax
 	cdq  // sign-extend %eax into %edx
@@ -600,7 +595,6 @@ prim sub, "-" // int int -- int
 	pop %eax
 	sub %eax, (%esp)
 next
-
 prim add, "+" // int int -- int
 	pop %eax
 	add %eax, (%esp)
@@ -613,7 +607,6 @@ next
 prim inc, "1+"
 	incl (%esp)
 next
-
 prim dec, "1-"
 	decl (%esp)
 next
@@ -631,7 +624,6 @@ prim min // int int -- int
 	mov %eax, (%esp)
 1:
 next
-
 prim max
 	pop %eax
 	cmpl (%esp), %eax
@@ -640,61 +632,14 @@ prim max
 1:
 next
 
-# Bitwise prims ######################################
+# Data Stack manipulation prims ######################
 
-prim lshift, "bits-up" // int n -- int
-	pop %ecx
-	pop %eax
-	shl %cl, %eax
-	push %eax
-next
-
-prim rshift, "bits-down" // int n -- int
-	pop %ecx
-	pop %eax
-	sar %cl, %eax
-	push %eax
-next
-
-prim and
-	pop %eax
-	and %eax, (%esp)
-next
-
-prim or
-	pop %eax
-	or %eax, (%esp)
-next
-
-prim xor
-	pop %eax
-	xor %eax, (%esp)
-next
-
-prim not
-	pop %eax
-	not %eax
-	push %eax
-next
-
-prim bool
-	pop %eax
-	xor %edx, %edx
-	test %eax, %eax
-	setz %dl
-	dec %edx
-	push %edx
-next
-
-# Stack manipulation prims ###########################
 prim dspGet, "dsp@"
 	push %esp
 next
-
 prim dspSet, "dsp!"
 	pop %esp
 next
-
 prim dsDepth, "ds-depth"
 	mov var_ds0, %eax
 	sub %esp, %eax
@@ -705,37 +650,32 @@ next
 prim drop
 	pop %eax
 next
-
 prim nip
 	pop %eax
 	pop %edx
 	push %eax
 next
-
 prim swap  // a b -- b a
 	pop %eax
 	pop %edx
 	push %eax
 	push %edx
 next
-
 prim dup
 	push (%esp)
 next
-
 prim over
 	push CELL_SIZE(%esp)
 next
 
 # Return stack prims #################################
-prim rsp, "rsp@"
+
+prim rspGet, "rsp@"
 	push %ebp
 next
-
 prim rspSet, "rsp!"
 	pop %ebp
 next
-
 prim rsDepth, "rs-depth"
 	mov var_rs0, %eax
 	sub %ebp, %eax
@@ -747,28 +687,24 @@ prim push
 	pop %eax
 	pushrs %eax
 next
-
 prim peek
 	push (%ebp)
 next
-
 prim pop
 	poprs %eax
 	push %eax
 next
-
 prim stash
 	mov (%esp), %eax
 	pushrs %eax
 next
-
 prim trash
 	poprs %eax
 next
 
 # Instruction pointer ################################
 
-prim ip, "ip@"
+prim ipGet, "ip@"
 	push %esi
 next
 
@@ -796,15 +732,18 @@ prim setByte "!b" # int addr --
 	mov %dl, (%eax)
 next
 
-prim here
+prim dpGet, "dp@"
 	push %edi
 next
-
 prim dpSet, "dp!"
 	pop %edi
 next
 
-prim dpAlign
+prim here
+	push %edi
+next
+
+prim dpAlign, "align-dp"
 	align_dp
 next
 
@@ -856,7 +795,7 @@ prim zbranch
 	lodsl                  # distance to branch
 	pop %edx               # boolean to test
 	xor %ecx, %ecx
-	sub $CELL_SIZE, %eax   # because lodsl increments %esi
+	sub $CELL_SIZE, %eax   # because lodsl incremented %esi
 	test %edx, %edx        # bool is zero?
 	setnz %cl
 	dec %ecx
@@ -885,7 +824,7 @@ prim lit
 	lodsl
 	push %eax
 next
-
+# we give this a different name to make code easier to read
 prim quote, "'"
 	lodsl
 	push %eax
@@ -908,14 +847,13 @@ prim copys  # str addr -- str'
 	mov %edx, %edi
 next
 
-prim keeps  // tmpStr -- str
-	// make a temporary string permanent
-	// align DP
+prim keeps  # tmpStr -- str
+	# move a temporary string to the dictionary
 	align_dp
 	mov %esi, %edx
 	pop %esi
-	push %edi  // push permanent string address
-	lodsl  // length into %eax
+	push %edi  # push permanent string address
+	lodsl  # length into %eax
 	mov %eax, %ecx
 	stosl  // save length to dest
 	string_len_in_cells %ecx
@@ -953,6 +891,8 @@ prim lenz  // zstr -- int
 	poprs %edi
 next
 
+
+# Numnber and date parser ###############################
 
 .section .data
 .align CELL_SIZE
@@ -997,7 +937,7 @@ prim number  # str -- int bool
 	xor %edx, %edx
 	pushrs %esi
 	pop %esi  # zstr in %esi
-	add $4, %esi
+	add $CELL_SIZE, %esi
 	# check for negative number
 	movb (%esi), %al
 	cmpb $'-', %al
@@ -1191,7 +1131,6 @@ prim length # list -- int
 next
 
 
-
 ######################################################
 # Forth-style non-primitive words                    #
 ######################################################
@@ -1201,6 +1140,7 @@ next
 word initialiseVM
 	# initialise the dictionary pointer
 	.long getBrkAddr, dictPtr, set
+	.long dictPtr, get, dpSet
 	# allocate default heap
 	.long lit, HEAP_SIZE, setHeapSize
 	# create scratchpad
@@ -1210,24 +1150,24 @@ word initialiseVM
 	# set up an IO buffer
 	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
 	# initialise commandline flag handler
-	.long lit, (127-32), cell, buffer, flagTableAddr, set
-	.long quote, singleStepper, lit, 'S', flagHandler
+	.long lit, FLAG_TABLE_SIZE, cell, buffer, flagTableAddr, set
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
 	#.long argv, get, one, cell, add, get
 	.long handleArgs
 1:
-	.long welcome, tailcall, reset
-end
+	.long welcome
+.long tailcall, reset
 
 word reset
 	.long rs0, get, rspSet 
 	.long interpreter, get
 .long tailcallTOS
 
-word initCommandlineFlags, "init-commandline-flags"
-end
+# word initCommandlineFlags, "init-commandline-flags"
+#	.long quote, singleStepper, lit, 'S', flag
+# end
 
 word handleArgs, "handle-args"
 	# first set this function to be our EOF handler
@@ -1241,40 +1181,13 @@ word handleArgs, "handle-args"
 	.long stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
 end
-
 word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
 	.long get
 end
 
-word anonymousCode, "anonymous-code"
-	.long anonCodeAreaAddr, get, dpSet
-	.long quote, do, storeinc
-	.long tailcall, prompt
-end
-word compiling
-	.long compileSemi    # evaluate any args (e.g. for constant: or create)
-	.long dictPtr, get, dpSet
-end
-word doneCompiling, "done-compiling"
-	.long here, dictPtr, set
-	.long anonymousCode
-end
-word compileSemi "compile-;"
-	.long quote, return, storeinc
-	.long here, isAnonymous, zbranch, JUMP(1f)
-	.long anonCodeAreaAddr, get, call
-	.long anonymousCode, return
-1:
-	.long doneCompiling
-end
-word semiColon, ";", call
-	.long tailcall, compileSemi
-end
-
-
-
+# Strings #############################################
 
 constant spc, 32, "'spc'"
 
@@ -1298,15 +1211,7 @@ word scan  # pred -- c
 	.long trash
 end
 
-word _skipSpaces
-	.long spc, gt
-end
-
-word wordBuffer, "word-buffer"
-	.long WordBuffer
-end
-
-# Exception handling #################################
+# Errors & Exception handling #################################
 
 word handles
 	# usage: ' fun handles Exception
@@ -1321,19 +1226,25 @@ word raise  # excp --
 	.long dup, zbranch, JUMP(1f)   #  excp hndl
 	.long nip, call, return
 1:
-	.long drop, labelForVar        #  lbl
-	.long ErrorUnhandled, lit, 2, error
+	.long drop, labelForVar, puts  #  lbl
+	.long ErrorUnhandled, puts, error
 end
 
+# Default handler for EOF is to exit. This is over-ridden
+# when reading from files passed on the commandline.
 variable EndOfFile, exit0
 
+string ErrorColour,   "[31m"
+string WarningColour, "[33m"
+string NoColour,      "[0m"
 
-# Sockets ############################################
+word error
+	.long inChannel, get, isATTY, zbranch, JUMP(1f), reset
+1:
+.long one, exit
 
-# constant SockDomainUnix AF_UNIX
 
-
-# Unfiled ############################################
+# Numeric Output #######################################
 
 word digit_to_char, "digit-to-char" # n -- c
 	.long dup 
@@ -1365,40 +1276,57 @@ word putnumber   # n base --
 	.long drop
 end
 
-word setBrkAddr "set-brk-addr"  # addr -- addr
-	.long SysBrk, syscall1
-end
-word getBrkAddr, "get-brk-addr"  #  -- addr
-	.long zero, setBrkAddr
-end
-word getHeapSize "get-heap-size"  # -- n
-	.long getBrkAddr, HeapBaseAddr, sub
+# String output #########################################
+
+word lens  # str -- int
+	.long get
 end
 
-# Todo: error handling on the following two functions
-word setHeapSize "set-heap-size"  # n --
-	.long HeapBaseAddr, add, setBrkAddr, drop
+word warn  # zstr len -- 
+	.long errChannel, get, write
 end
-word growHeap "grow-heap"  # n --
-	.long getBrkAddr, add, setBrkAddr, drop
-end
-
-word exit0, "0-exit"
-	.long zero, exit
+word warns # nstr --
+	.long stash, one, cell, add
+	.long pop, get, warn
 end
 
-word labelForVar, "label-for-var"
-	.long one, cell, sub, cfaToLabel
+word put   # zstr len --
+	.long outChannel, get, write
+end
+word putz # zstr --
+	.long dup, lenz
+	.long put
+end
+word puts #  nstr --  
+	.long stash, one, cell, add
+	.long pop, get, put
 end
 
-word exit #  n -- 
-	.long SysExit, syscall1
+word putc  # c --
+	.long dspGet, one, put
+	.long drop # drop on-stack buffer
 end
 
-word bye, , call
-	.long byebye, puts, nl
-	.long zero, exit
+word putn // n --
+	.long putsign
+	.long lit, 10
+	.long putnumber
 end
+word putx // n --
+	.long lit, 16
+	.long putnumber
+end
+
+word colour  #  colour -- 
+	.long push
+	.long outChannel, get, isATTY, zbranch, JUMP(1f)
+	.long peek, puts
+1:
+	.long trash
+end
+
+
+# File IO ###############################################
 
 word zopen   # zstr mode -- fh
 	# syscall3 requires arg order: perms mode zstr callid
@@ -1409,7 +1337,6 @@ word zopen   # zstr mode -- fh
 	.long drop, FileOpenFailed, raise
 1:
 end
-
 word open  # str mode -- fh
 	.long push
 	.long one, cell, add
@@ -1419,11 +1346,9 @@ end
 word zopenIn, "zopen-in"
 	.long ReadOnly, zopen, inChannel, set
 end
-
 word openIn, "open-in"
 	.long ReadOnly, open, inChannel, set
 end
-
 word openOut, "open-out"
 	# TODO: doesn't check for errors!
 	.long open, outChannel, set
@@ -1432,7 +1357,6 @@ end
 word close  # fh -- err
 	.long SysClose, syscall1
 end
-
 word closeOut, "close-out"
 	.long outChannel, get, close
 	.long stdout, outChannel, set
@@ -1448,12 +1372,10 @@ word write  # str len fh --
 	.long SysWrite, syscall3
 	.long drop # discard result
 end
-
 word read   # buf len fh -- n
 	.long push, swap, pop
 	.long SysRead, syscall3
 end
-
 
 variable FileOpenFailed
 variable MmapFailed
@@ -1477,11 +1399,50 @@ word fileLength  "file-length" # fd -- len
 	.long statFD, st_size, get
 end
 
+
+# Memory management ######################################
+
+word setBrkAddr "set-brk-addr"  # addr -- addr
+	.long SysBrk, syscall1
+end
+word getBrkAddr, "get-brk-addr"  #  -- addr
+	.long zero, setBrkAddr
+end
+word getHeapSize "get-heap-size"  # -- n
+	.long getBrkAddr, HeapBaseAddr, sub
+end
+
+# Todo: error handling on the following two functions
+word setHeapSize "set-heap-size"  # n --
+	.long HeapBaseAddr, add, setBrkAddr, drop
+end
+word growHeap "grow-heap"  # n --
+	.long getBrkAddr, add, setBrkAddr, drop
+end
+
+
+# System interface ########################################
+
+word exit0, "0-exit"
+	.long zero, exit
+end
+
+word exit #  n -- 
+	.long SysExit, syscall1
+end
+
+word bye, , call
+	.long byebye, puts, nl
+	.long zero, exit
+end
+
 constant TCGETS, 0x00005401
 word isATTY "is-a-tty?"  # fd -- bool
 	.long push, scratchpadAddr, get, TCGETS, pop, SysIOCtl, syscall3
 	.long zero, eq
 end
+
+# Memory mapping
 
 constant MapShared,     MAP_SHARED
 constant MapPrivate,    MAP_PRIVATE
@@ -1493,7 +1454,6 @@ constant ProtWrite,     PROT_WRITE
 constant ProtExec,      PROT_EXEC
 constant ProtGrowsDown, PROT_GROWSDOWN
 constant ProtGrowsUp,   PROT_GROWSUP
-
 
 word mmap  # fd flags prot len -- addr
 	.long push, push, push, push
@@ -1508,6 +1468,7 @@ word munmap  # len addr --
 	.long drop  # todo: error handling
 end
 
+# Create a mem-mapped buffer
 word buffer  # len -- addr
 	.long push
 	.long minus_one                        # fd is ignored
@@ -1539,15 +1500,6 @@ word decVar "dec-var"
 end
 
 
-.section .data
-.align CELL_SIZE, 0
-wordbuffer:
-	.long 0
-wordbuffer_text:
-	.space WORD_BUFFER_SIZE
-end_wordbuffer:
-	.long 0 // space for padding
-
 
 variable _iterFunc
 
@@ -1563,7 +1515,6 @@ word search // S list (entry -> bool) -- T ?entry
 	.long pop
 	// .long lit, 32, putc, dup, putx, nl
 end
-
 word each  # dict fun -- 
 	.long push
 1:
@@ -1577,37 +1528,46 @@ word each  # dict fun --
 end
 
 
-word notFoundHandler "not-found-handler"
-	.long puts, NotFound, puts, nl
-.long reset
+# Dictionary lookup ###################################
+
+.section .data
+.align CELL_SIZE, 0
+wordbuffer:
+	.long 0
+wordbuffer_text:
+	.space WORD_BUFFER_SIZE
+end_wordbuffer:
+	.long 0 // space for padding
+
+word notFoundHandler "not-found-handler"  # str
+	.long WarningColour, colour
+	.long puts, NoColour, colour, NotFound, puts, nl
+.long error
 
 word find // str -- xt behav
 	.long push  # save str
 	.long dictionary
 1:
-	.long get, dup, zbranch, JUMP(2f), dup, label
-	.long peek, strEq
+	.long get, dup, zbranch, JUMP(2f)
+	.long dup, label, peek, strEq
 	.long zbranch, JUMP(1b)
 	.long dup, cfa, swap, behaviour, trash, return
 2:
 	.long drop, peek, number, zbranch, JUMP(3f)
 	.long quote, compileLiteral, trash, return
 3:
-	.long pop, NotFoundException, raise
+	.long drop, pop, NotFoundException, raise
 end
 
 word lfa, ".lfa"  # entry -- addr
 	.long lit, LFA_OFFS, add
 end
-
 word cfa, ".cfa" // entry -- codeAddr
 	.long lit, CFA_OFFS, add
 end
-
 word bfa, ".bfa"
 	.long lit, BFA_OFFS, add
 end
-
 word pfa, ".pfa"
 	.long lit, PFA_OFFS, add
 end
@@ -1623,97 +1583,16 @@ word cfaToLabel, ".cfa->.label"
 	.long label
 end
 
-word warn  # zstr len -- 
-	.long errChannel, get, write
+word labelForVar, "label-for-var"
+	.long one, cell, sub, cfaToLabel
 end
 
-word put   # zstr len --
-	.long outChannel, get, write
-end
 
-word putc  # c --
-	.long dspGet, one, put
-	.long drop # drop on-stack buffer
-end
 
-word lens  # str -- int
-	.long get
-end
-
-word putz # zstr --
-	.long dup, lenz
-	.long put
-end
-
-word puts #  nstr --  
-	.long stash, one, cell, add
-	.long pop, get, put
-end
-
-word warns # nstr --
-	.long stash, one, cell, add
-	.long pop, get, warn
-end
-
-word putn // n --
-	.long putsign
-	.long lit, 10
-	.long putnumber
-end
-
-word putx // n --
-	.long lit, 16
-	.long putnumber
-end
 
 word clearBuffer
 	.long ioBuffer, get
 	.long bufend, set
-end
-
-// It should definitely stop parsing a file if one is being loaded
-
-
-word error  // ... str n -- 
-	.long ResetColour, puts, nl
-	.long Error, puts
-	.long stash
-1:
-	.long zbranch, JUMP(2f)
-	.long puts // error message
-	.long ResetColour, puts
-	.long pop, dec, stash
-	.long branch, JUMP(1b)
-2:
-	.long trash, nl   // newline
-	.long clearBuffer
-	.long errorHandler, get, call    // this should never return
-.long tailcall, reset    // but this is here just in case
-
-word fatalError, "fatal-error"
-	.long ErrorWasFatal, puts
-.long one, exit
-
-word compileError, "compile-error"  # ... str n -- 
-	.long inChannel, get, isATTY, not, zbranch, JUMP(1f)
-	.long push, push, push
-	.long dictionary, get, label
-	.long InDefinition
-	.long pop, pop, pop, inc, inc
-	.long quote, fatalError, errorHandler, set
-1:
-.long error
-
-word warning
-	.long WarningPrefix, warns
-	.long stash
-1:
-	.long zbranch, JUMP(2f)
-	.long warns
-	.long pop, dec, stash
-	.long branch, JUMP(1b)
-2:
-	.long trash, ResetColour, puts, nl
 end
 
 word nl
@@ -1751,9 +1630,8 @@ word header  # str --
 end
 
 word define  #  str interp --
-	.long push, header, pop, storeinc
+	.long swap, header, storeinc
 end
-
 
 word defdoes   # str --
 	.long quote, dodoes, define
@@ -1768,28 +1646,27 @@ word defvar    # val str --
 	.long quote, dovar, define
 end
 
-
 word createDoes, "create-does"  # behav --
-	.long compiling
+	.long semicolon, useDict
 	.long word, keeps, defdoes, storeinc # , lit, return, storeinc
-	.long doneCompiling
+	.long useAnon
 end
 word createConstant, "create-constant"  # val --
 	# constant: potentially needs to evaluate the preceding expression
 	# so there's a value waiting
-	.long compiling
+	.long semicolon, useDict
 	.long word, keeps, defconst, storeinc
-	.long doneCompiling
+	.long useAnon
 end
 word createVariable, "create-variable"  # --
-	.long compiling
+	.long useDict
 	.long word, keeps, defvar
 	.long here, one, cell, add, storeinc
 	.long zero, storeinc
-	.long doneCompiling
+	.long useAnon
 end
 word createWord, "create-word"
-	.long compiling
+	.long useDict
 	.long word, keeps, defword
 end
 word immed, "#immediate", call
@@ -1805,6 +1682,25 @@ end
 word colon, ":", call
 	.long createWord
 end
+word semicolon, ";", call
+	.long quote, return, storeinc
+	.long here, isAnonymous, zbranch, JUMP(1f)
+	.long anonCodeAreaAddr, get, call
+1:
+.long tailcall, useAnon
+
+word useDict
+	.long here, isAnonymous, zbranch, JUMP(1f)
+	.long dictPtr, get, dpSet
+1:
+end
+word useAnon
+	.long here, isAnonymous, not, zbranch, JUMP(1f)
+	.long here, dictPtr, set
+1:
+	.long anonCodeAreaAddr, get, dpSet
+	.long DoAddr, storeinc
+.long tailcall, prompt
 
 word welcome
 	.long inChannel, get, isATTY, zbranch, JUMP(0f)
@@ -1832,7 +1728,7 @@ word checkStacks "check-stacks"
 end
 
 word interpret
-	.long anonymousCode
+	.long useAnon
 1:
 	.long word, find, call
 	.long branch, JUMP(1b)
@@ -1849,7 +1745,7 @@ end
 
 .section .rodata
 
-constant DoAddr,      do, behav
+constant DoAddr,      do
 constant DoConstAddr, doconst
 constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
