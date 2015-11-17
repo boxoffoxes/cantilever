@@ -1587,36 +1587,17 @@ word labelForVar, "label-for-var"
 	.long one, cell, sub, cfaToLabel
 end
 
-
-
-
-word clearBuffer
-	.long ioBuffer, get
-	.long bufend, set
-end
-
 word nl
 	.long lit, '\n', putc
 end
 
 word compileWord, "compile-word" // cfa --
-	.long here, lastCompiled, set
 	.long storeinc
 end
 
 word compileLiteral, "compile-literal" // n --
 	.long quote, lit, storeinc, storeinc
 end
-
-word report
-	// This shouldn't be a word because that skews its view of 
-	// the return stack. Unfortunately without refactoring we
-	// can't call putn from a prim. :(
-	.long dsReport, puts,   dsDepth, putn
-	.long rsReport, puts,   rsDepth, putn
-	.long nl
-end
-
 
 # Words that create words ############################
 
@@ -1703,29 +1684,20 @@ word useAnon
 .long tailcall, prompt
 
 word welcome
-	.long inChannel, get, isATTY, zbranch, JUMP(0f)
+	.long inChannel, get, isATTY, zbranch, JUMP(1f)
 	.long WelcomeMessage, puts
-0:
+1:
 end
 word prompt
-	.long inChannel, get, isATTY, zbranch, JUMP(0f)
+	.long inChannel, get, isATTY, zbranch, JUMP(1f)
 	.long nl, spc, putc, dsDepth, putn
 	.long lit, ',', putc, rsDepth, putn
 	.long promptText, get, puts
-0:
+1:
 end
 
 variable DataStackUnderflow
 variable DataStackOverflow
-
-word checkStacks "check-stacks"
-	.long dspGet, ds0, get, gt, zbranch, JUMP(1f)
-	.long DataStackUnderflow, raise
-1:
-	.long dspGet, rs0, get, le, zbranch, JUMP(2f)
-	.long DataStackOverflow, raise
-2:
-end
 
 word interpret
 	.long useAnon
@@ -1734,13 +1706,8 @@ word interpret
 	.long branch, JUMP(1b)
 end
 
-string dsReport "  ds: "
-string rsReport "  rs: "
-
-word hardReset "hard-reset"
-	.long argv0, get, argv, set
-	.long ds0, get, dspSet
-	.long handleArgs, tailcall, reset
+word suppress, "`", call
+	.long word, find, drop, storeinc
 end
 
 .section .rodata
@@ -1751,13 +1718,14 @@ constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
 constant CellBits, CELL_BITS
 constant CellSize, CELL_SIZE
+
 #ifdef CANTILEVER_CHEAP_DATE
 constant CheapDate, -1
 #else
 constant CheapDate, 0
+#endif
 constant Base4Year, BASE_4_YEAR
 constant LilianCorrection, LILIAN_CORRECTION
-#endif
 
 variable argc
 variable argv
@@ -1773,31 +1741,21 @@ variable ds0
 variable rs0
 variable dp0
 variable flagTableAddr
-variable lastCompiled, 0, "last-compiled"
-variable errorHandler, reset, "error-handler"
 variable dictPtr, ,"dict-ptr"
 
 variable NotFoundException, notFoundHandler
 
 string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
-string WarningPrefix, "--> Warning: [33m"
-string Error, "==> [31mError. [33m"
-string ResetColour, "[0m"
-string InDefinition, "\n\tfollowing defintion of "
-string At, "\" at [31m"
 string byebye, "\n-- Toodle-pip!\n"
 string TooLong, "Word too long: "
 string NotFound, " is neither a dictionary word nor a number\n"
 string InvalidEsc, "Invalid escape char: "
-# string FileOpenFailed, "Could not open file: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
-string ErrorWasFatal, "Error was fatal\n"
 string ErrorUnhandled, "Unhandled exception: "
 string DefaultPrompt, " ok: "
 
 variable decimal_places, 0, "decimal-places"
 
-variable main
 variable promptText, str_DefaultPrompt, "prompt-text"
 variable interpreter, interpret
 variable dictionary, link   # MUST BE LAST
