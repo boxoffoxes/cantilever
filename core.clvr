@@ -1,0 +1,20 @@
+9  constant: '\t'
+10 constant: '\n'
+27 constant: '\e'
+
+: end-of-comment? '\n' = ;
+: -- #immediate   ' end-of-comment? scan   drop  ;
+
+-- and now we have comments. Yay!
+
+' , create: alias:
+
+-- to make address manipulation more readable...
+: before - ;
+: after  + ;
+
+-1 constant: true
+0  constant: false
+
+
+-- vim:ft=cantilever

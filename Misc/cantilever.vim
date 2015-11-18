@@ -32,7 +32,7 @@ syn region Comment start="\<--\>" end="\n"
 
 syn match isQuote  /\<'\s\+\S\+/
 syn match isQuote  /\<'\s\+\S\+:\s\+\S\+/
-syn match isImmed  /\<#\s\+\S\+/
+syn match isImmed  /\<#\S\+/
 " syn match Number   /\<#\s\+[0-9]\+\>/
 syn match isMacro  /\S*:\s\+\S\+/
 syn match isDefn   /^\S*:\s\+\S\+/
@@ -41,7 +41,7 @@ syn match Number   /\<oct:\s\+[0-8]\+\>/
 syn match Number   /\<bin:\s\+[01]\+\>/
 syn match Character /\<c:\s\+\S\+\>/
 syn match isImmed  /\<\(if\|else\|endif\|;\|;;\|->\|forever\|times\|repeat\)\>/
-syn match Boolean  /\<\(true\|false\|\S\+?\)\>/
+syn match Boolean  /\<\(true\|false\|\S\+?\|[<>=]\+\)\>/
 syn match usesRS   /\<\(push\|pop\|stash\|trash\|peek\)\>/
 " syn match Exception /\<\(raise\|handles\)\>/
 " syn match tailCall /\<tail: \S\+\>/

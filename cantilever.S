@@ -216,6 +216,8 @@ _eof:
 	mov var_ioBuffer, %eax
 	mov %eax, var_bufend
 	mov %eax, var_bufpos
+	pop %eax   # _key return addr
+	pop %eax   # _word return addr
 	mov $_eof_wrap, %esi
 next
 
@@ -324,6 +326,7 @@ dovar:
 TRACE_CODE
 next
 
+
 # The black-magic of forth: data with behaviour.
 #
 # ... | dodoes | behav | data ...
@@ -337,13 +340,11 @@ next
 #
 .align CELL_SIZE
 dodoes:
-	# dodoes is effectively a tail-call. We jump directly to the 
-	# code field of behav instead of calling next so that we 
-	# leave the instruction pointer in %esi unmodified
+	pushrs %esi
 	lea 8(%eax), %edx
-	mov 4(%eax), %eax
+	mov 4(%eax), %esi
 	push %edx
-jmp *(%eax)
+next
 
 # System calls #######################################
 
@@ -1173,11 +1174,11 @@ word handleArgs, "handle-args"
 	.long quote, handleArgs, handles, EndOfFile
 	# check if there's an argument left to handle
 	.long nextArg, dup, zbranch, JUMP(1f)
-	.long dup, zopenIn, tailcall, reset
+	.long zopenIn, tailcall, reset
 1:
 	# no args left: switch to reading stdin and
 	# reset EOF handler
-	.long stdin, inChannel, set
+	.long drop, stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
 end
 word nextArg, "next-arg"
@@ -1627,9 +1628,17 @@ word defvar    # val str --
 	.long quote, dovar, define
 end
 
-word createDoes, "create-does"  # behav --
-	.long semicolon, useDict
-	.long word, keeps, defdoes, storeinc # , lit, return, storeinc
+word create
+	.long useDict
+	.long word, keeps, defdoes, immed
+	.long here, zero, storeinc  # space for the behaviour
+end
+word does
+	# This is subtle! pop gives us the address of the word after
+	# does in the definition (and prevents subsequent code executing).
+	# We put it in the link field of the word create has just made.
+	.long pop, dictionary, get, pfa, set
+	# Finally we switch back to anonymous mode
 	.long useAnon
 end
 word createConstant, "create-constant"  # val --
@@ -1650,7 +1659,7 @@ word createWord, "create-word"
 	.long word, keeps, defword
 end
 word immed, "#immediate", call
-	.long dictionary, get, bfa, call, set
+	.long dictionary, get, bfa, quote, call, swap, set
 end
 
 word constantColon, "constant:", call
@@ -1747,11 +1756,11 @@ variable NotFoundException, notFoundHandler
 string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
 string byebye, "\n-- Toodle-pip!\n"
 string TooLong, "Word too long: "
-string NotFound, " is neither a dictionary word nor a number\n"
+string NotFound, " is neither a dictionary word nor a recognised number\n"
 string InvalidEsc, "Invalid escape char: "
 string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
 string ErrorUnhandled, "Unhandled exception: "
-string DefaultPrompt, " ok: "
+string DefaultPrompt, " ok "
 
 variable decimal_places, 0, "decimal-places"
 
