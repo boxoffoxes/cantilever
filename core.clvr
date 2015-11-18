@@ -3,23 +3,161 @@
 27 constant: '\e'
 
 : end-of-comment? '\n' = ;
-: -- #immediate   ' end-of-comment? scan   drop  ;
+: --   #immediate   ' end-of-comment? scan   drop  ;
 
 -- and now we have comments. Yay!
 
-: alias:  #immediate
-	create  , 
-	does    @ putx
+-- allow aliasing of existing words without adding a
+-- layer of indirection
+: alias:  #immediate  -- ( xt -- )  ( -- )
+	create  ,    -- store the word being aliased
+	does    @ ,  -- when called compile the aliased word
 ;
 
-
 -- to make address manipulation more readable...
-' - alias: before
-' + alias: after
+' cell alias: cells
+' -    alias: before
+' +    alias: after
 
-
+-- a couple more readability constants...
 -1 constant: true
 0  constant: false
+
+-- Text highlighting
+: warning     WarningColour colour ;
+: uncoloured  NoColour colour ;
+
+-- now let's implement conditionals
+: compile-jump     ,    here    0 ,  ;        --  xt -- addr
+: compile-conditional-jump   ' zbranch  compile-jump ;
+: compile-unconditional-jump ' branch   compile-jump ;
+: jump-target   dup   here swap -   swap !  ;
+
+variable: if-depth
+: if     #immediate   compile-conditional-jump   if-depth inc-var  ;
+: else   #immediate   compile-unconditional-jump   push   jump-target   pop ;
+: endif  #immediate   jump-target   if-depth dec-var ;
+
+-- exceptions are basically just variables
+: exception:   #immediate    create-variable  ;
+
+-- next up nestable block comments
+: while-word  --   xt --
+	-- consume words until the passed function returns false
+	push
+	word peek call if 
+		pop
+		tail: while-word
+	else
+		trash
+	endif
+;
+: _nestable-comment   --  n word -- n bool
+	1 cell after @     -- skip the word's length count
+	stash ')' =    if  -- does the word equal ")"?
+		1 -            -- yes, then reduce the depth count
+		trash          -- and discard the saved word
+	else
+		pop '(' =  if 1 + endif  -- else if the word is (, increase the depth
+	endif
+	dup bool           -- convert the depth to a canonical boolean
+;
+: (    #immediate    1  ' _nestable-comment while-word    drop ;
+( and now we have better comments! ( because they can be
+  nested, and can span multiple lines ) )
+
+
+-- let's implement simple pattern matching
+-- variable: pattern-match-depth
+-- variable: rs-usage
+
+: unbalanced-rs-error
+	UnbalancedRSInBranch   warns
+	warning    dictionary @ .label  warns    uncoloured
+;
+: ->    #immediate
+	' matches? ,
+	compile-conditional-jump
+	-- rs-usage @
+	-- pattern-match-depth inc-var
+;
+: ;;    #immediate
+	' return ,
+	-- rs-usage @  if   unbalanced-rs-error   endif
+	-- rs-usage !
+	jump-target
+	-- pattern-match-depth dec-var
+;
+' dup alias: _
+
+
+-- Now let's get strings...
+exception: InvalidEscapeSequence
+variable: string-terminator
+: handle-str-esc  ( c -- c )
+	'e' -> drop '\e' ;;
+	'n' -> drop '\n' ;;
+	't' -> drop '\t' ;;
+	'0' -> drop   0  ;;
+	'"' ->           ;;
+	'\' ->           ;;
+	_   -> drop drop drop   InvalidEscapeSequence raise ;;
+;
+: end-of-string?  ( c -- bool )
+	string-terminator @
+	    -> drop   0 ,b   align-dp     true  ;;
+	'\' -> drop key handle-str-esc ,b false ;;
+	_   -> ,b                         false ;;
+;
+-- TODO: not sure if I like this style of named string. Might revert to
+-- the previous inline strings...
+: string:   #immediate
+	create
+		'\n' string-terminator !
+		here   0 ,   ' end-of-string? scan    drop
+		dup 1 cell after   lenz   swap !
+	does
+;
+
+(
+: compileZString ( char -- zstr )
+	stringTerminator !
+	here
+	false _string
+	here 1+ align
+	0 , 0 ,
+	dp!
+;
+ 
+: compileString ( char -- str )
+	here push
+	0 ,
+	compileZString
+	lenz peek !
+	pop
+;
+
+: compileInlineString ( char -- )
+	compile-unconditional-jump
+	swap compileString
+	swap jump-target
+	compile-literal
+;
+
+: s" #immediate
+	'"' compileInlineString
+;
+
+: z" #immediate
+	compile-unconditional-jump
+	'"' compileZString
+	swap jump-target
+	compile-literal
+; )
+
+-- empty-string constant
+-- : "" s" " ;
+
 
 
 -- vim:ft=cantilever

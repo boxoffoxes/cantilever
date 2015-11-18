@@ -45,6 +45,7 @@ syn match Boolean  /\<\(true\|false\|\S\+?\|[<>=]\+\)\>/
 syn match usesRS   /\<\(push\|pop\|stash\|trash\|peek\)\>/
 " syn match Exception /\<\(raise\|handles\)\>/
 " syn match tailCall /\<tail: \S\+\>/
+syn region String  start="string:" end="\n" contains=stringEsc,isDefn
 
 syn region isImmed start="\<#\[\>" end="\<\]\>" contains=Number,Comment
 

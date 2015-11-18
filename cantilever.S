@@ -753,7 +753,7 @@ prim storeinc, ","
 	stosl
 next
 
-prim storecinc, ",c"
+prim storebinc, ",b"
 	pop %eax
 	stosb
 next
@@ -1211,6 +1211,10 @@ word scan  # pred -- c
 	.long trash
 end
 
+word clearInputBuffer, "clear-input-buffer"
+	.long bufend, get, bufpos, set
+end
+
 # Errors & Exception handling #################################
 
 word handles
@@ -1240,7 +1244,8 @@ string WarningColour, "[33m"
 string NoColour,      "[0m"
 
 word error
-	.long inChannel, get, isATTY, zbranch, JUMP(1f), reset
+	.long inChannel, get, isATTY, zbranch, JUMP(1f)
+	.long clearInputBuffer, reset
 1:
 .long one, exit
 
@@ -1629,7 +1634,7 @@ word defvar    # val str --
 end
 
 word create
-	.long useDict
+	.long semicolon, useDict
 	.long word, keeps, defdoes, immed
 	.long zero, storeinc  # space for the behaviour
 end
