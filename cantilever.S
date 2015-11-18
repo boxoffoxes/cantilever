@@ -1631,7 +1631,7 @@ end
 word create
 	.long useDict
 	.long word, keeps, defdoes, immed
-	.long here, zero, storeinc  # space for the behaviour
+	.long zero, storeinc  # space for the behaviour
 end
 word does
 	# This is subtle! pop gives us the address of the word after

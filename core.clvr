@@ -7,11 +7,16 @@
 
 -- and now we have comments. Yay!
 
-' , create: alias:
+: alias:  #immediate
+	create  , 
+	does    @ putx
+;
+
 
 -- to make address manipulation more readable...
-: before - ;
-: after  + ;
+' - alias: before
+' + alias: after
+
 
 -1 constant: true
 0  constant: false
