@@ -31,6 +31,7 @@ syn region Comment start="\<--\>" end="\n"
 " syn region String  start="\"\t" end="\""
 
 syn match isQuote  /\<'\s\+\S\+/
+syn match isQuote  /\<'\s\+`\s\+\S\+/
 syn match isQuote  /\<'\s\+\S\+:\s\+\S\+/
 syn match isImmed  /\<#\S\+/
 " syn match Number   /\<#\s\+[0-9]\+\>/
