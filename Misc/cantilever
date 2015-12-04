@@ -9,7 +9,7 @@ if [ -z "$CLVR_DIR" ]; then
 fi
 
 CLVR="$CLVR_DIR/cantilever"
-CLVR_LIB="$CLVR_DIR/foundation.clvr"
+CLVR_LIB="$CLVR_DIR/core.clvr"
 WRAP=
 
 if [ -n "`type -f rlwrap`" ]; then

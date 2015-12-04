@@ -14,14 +14,25 @@
 	does        @ ,  -- when called compile the aliased word
 ;
 
--- to make address manipulation more readable...
+-- Lets us hide the current definition and call an earlier definition with 
+-- the same name...
+: #hidden   #immediate   dictionary @ .label   dup @ not  swap ! ; 
+: #visible  #immediate  ` #hidden ; 
+
+-- make address manipulation more readable...
 ' cell alias: cells
 ' -    alias: before
 ' +    alias: after
 
+: next-cell  here   1 cell after   ;
+: prev-cell  here   1 cell before  ;
+
 -- a couple more readability constants...
 -1 constant: true
 0  constant: false
+
+-- missing arithmetic
+: /  /mod drop  ;
 
 -- Text highlighting
 : warning     WarningColour colour ;
@@ -71,10 +82,10 @@ variable: if-depth
 -- variable: pattern-match-depth
 -- variable: rs-usage
 
-: unbalanced-rs-error
+( : unbalanced-rs-error
 	UnbalancedRSInBranch   warns
 	warning    dictionary @ .label  warns    uncoloured
-;
+; )
 : ->    #immediate
 	' matches? ,
 	compile-conditional-jump
@@ -90,6 +101,38 @@ variable: if-depth
 ;
 ' dup alias: _
 
+: forever    #immediate
+	' lit , 2 , ' times , ' peek , ' push ,
+;
+: times      #immediate #hidden   ( -- addr )
+	' lit , here 0 , ' push ,  -- push the address to return to at end of loop
+	' times ,                  -- compile call to previous definition of times
+; -- #visible
+: repeat     #immediate
+	' return ,
+	here swap !
+;
+
+( -- Imperative looping
+: times      #immediate   ( n -- )
+	' push ,					-- push i
+	here   ' peek ,				-- this is where we jump back to
+	compile-conditional-jump    -- jump out of loop if i==0
+	' pop , ' 1- , ' push ,     -- decrement the counter
+	swap                        -- leave NoS:exit-jump ToS:start-of-loop
+;
+: forever    #immediate
+	-1 compile-literal
+	' push ,   here   ' peek ,
+	compile-conditional-jump
+	swap
+;
+: repeat     #immediate    ( exit-jump start-of-loop  --  )
+	next-cell -    compile-unconditional-jump   !
+	jump-target
+	' trash ,
+;
+)
 
 -- Now let's get strings...
 exception: InvalidEscapeSequence
@@ -109,15 +152,27 @@ variable: string-terminator
 	'\' -> drop key handle-str-esc ,b false ;;
 	_   -> ,b                         false ;;
 ;
--- TODO: not sure if I like this style of named string. Might revert to
--- the previous inline strings...
+: compile-string ( char -- str )
+	string-terminator !
+	here stash   0 ,  ' end-of-string? scan   drop
+	dup 1 cell after   lenz   swap !
+	pop
+;
+
+-- Global named strings...
 : string:   #immediate
 	create
-		'\n' string-terminator !
-		here   0 ,   ' end-of-string? scan    drop
-		dup 1 cell after   lenz   swap !
+		'\n' compile-string  drop
 	does
 ;
+-- local anonymous strings
+: inline-string ( char -- )
+	compile-unconditional-jump
+	swap compile-string
+	swap jump-target
+	compile-literal
+;
+: s"   #immediate   '"' inline-string   ;
 
 : allot  ( n -- )
 	here + dp!
@@ -125,43 +180,137 @@ variable: string-terminator
 ;
 
 (
-: compileZString ( char -- zstr )
-	stringTerminator !
-	here
-	false _string
-	here 1+ align
-	0 , 0 ,
-	dp!
+-- Date, time and decimal output functions
+
+: leading-zero
+	9 <= if   '0' putc   endif
 ;
- 
-: compileString ( char -- str )
-	here push
-	0 ,
-	compileZString
-	lenz peek !
+
+: explode-time ( t -- h m s )
+	60 /mod push
+	60 /mod push
+	pop pop
+;
+: puttime  ( t -- )
+	explode-time
+	push push
+	dup       leading-zero putn   ':' putc
+	pop dup   leading-zero putn   ':' putc
+	pop dup   leading-zero putn
+;
+
+146097 constant: 4Centuries
+36524  constant: 1Century
+1461   constant: 4Years
+365    constant: 1Year
+153    constant: 5Months
+
+1600   constant: BaseDate
+
+: _make-year  ( 4cs 1c 4ys 1y 5ms -- ys )
+	2 =  if  1+  endif
+	swap    4 *   +
+	swap  100 *   +
+	swap  400 *   +
+	BaseDate +
+;
+: _make-month-and-day  ( ds -- ms ds )
+	stash  31 +   5 *  5Months /   2 +
+	pop   over 1+   5Months *   5 /   -   123 +
+	push
+	dup 13 >= if
+		12 -
+	endif
 	pop
 ;
 
-: compileInlineString ( char -- )
-	compile-unconditional-jump
-	swap compileString
-	swap jump-target
-	compile-literal
+: explode-date  ( date -- y m d )
+	LilianCorrection 1+ -
+	4Centuries /mod 
+	4Centuries 1- ->  -- Date is Feb 29th of a 400th year
+		drop   1+   400 *   BaseDate +
+		2 29
+	;;
+	1Century /mod
+	4Years   /mod   -- stack: 4cs 1cs 4ys r
+	4Years 1- ->      -- Date is Feb 29th of a 4th year
+		drop 
+		1+  4 *
+		swap   100 *  +     swap   400 *  +     BaseDate +
+		2 29
+	;;
+	1Year /mod    -- ds: 4cs 1c 4ys 1y r
+	stash
+	5Months /mod  -- ds: 4cs 1c 4ys 1y 5ms r
+
+	drop _make-year   pop _make-month-and-day
+;
+: putdate  ( date -- )
+	explode-date 
+	push push            putn   '-' putc
+	pop dup leading-zero putn   '-' putc
+	pop dup leading-zero putn
 ;
 
-: s" #immediate
-	'"' compileInlineString
+: putd  ( decimal -- )
+	-- TODO: discard low-order zeroes for neatness
+	putsign
+	decimal-places @ times
+		10 /mod swap
+	repeat
+	putn
+	'.' putc
+	decimal-places @ times
+		'0' + putc
+	repeat
 ;
 
-: z" #immediate
-	compile-unconditional-jump
-	'"' compileZString
-	swap jump-target
-	compile-literal
-; )
+60 60 *      constant: Hour
+Hour 24 *    constant: SecondsInADay
+1970-01-01   constant: UnixEpoch
 
--- empty-string constant
--- : "" s" " ;
+variable: tz
+
+: hour Hour * ;
+
+: GMT ;
+: BST  1 hour + ;
+
+' BST tz !
+
+: now ( -- date time )
+	-- WARNING: time is UTC.
+	0 SysTime syscall1
+	tz @ call
+	SecondsInADay /mod push   UnixEpoch +   pop
+;
+: today ( -- date ) now drop ;
+: time  ( -- time ) now nip  ;
+
+: decimal-scaling-factor s" 1.0" number drop ;
+
+: decimal-places
+	prior: decimal-places ! 
+;
+
+: *d  ( n d -- n )
+	-- multiply a number by a decimal, rescaling
+	-- the result to the same number of decimal
+	-- places as n
+	decimal-scaling-factor */
+;
+: /d   ( n d -- n )
+	-- ...same for division
+	decimal-scaling-factor swap */
+;
+
+2 decimal-places ;
+)
+
+-- Fixed-point "constants"...
+: pi ( -- d )
+	s" 3.1415926535898" number drop
+;
 
 
 
