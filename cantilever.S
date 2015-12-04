@@ -1635,8 +1635,11 @@ end
 
 word create
 	.long semicolon, useDict
-	.long word, keeps, defdoes, immed
+	.long word, keeps, defdoes
 	.long zero, storeinc  # space for the behaviour
+end
+word createImm, "create-immed"
+	.long create, immed
 end
 word does
 	# This is subtle! pop gives us the address of the word after

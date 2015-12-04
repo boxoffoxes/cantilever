@@ -10,8 +10,8 @@
 -- allow aliasing of existing words without adding a
 -- layer of indirection
 : alias:  #immediate  -- ( xt -- )  ( -- )
-	create  ,    -- store the word being aliased
-	does    @ ,  -- when called compile the aliased word
+	create-immed  ,    -- store the word being aliased
+	does        @ ,  -- when called compile the aliased word
 ;
 
 -- to make address manipulation more readable...
@@ -117,6 +117,11 @@ variable: string-terminator
 		here   0 ,   ' end-of-string? scan    drop
 		dup 1 cell after   lenz   swap !
 	does
+;
+
+: allot  ( n -- )
+	here + dp!
+	align-dp
 ;
 
 (
