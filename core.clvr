@@ -160,10 +160,8 @@ variable: string-terminator
 ;
 
 -- Global named strings...
-: string:   #immediate
-	create
-		'\n' compile-string  drop
-	does
+: string:  ( str -- ) ( -- str )  #immediate
+	create   here copys   does
 ;
 -- local anonymous strings
 : inline-string ( char -- )
