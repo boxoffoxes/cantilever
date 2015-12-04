@@ -101,19 +101,20 @@ variable: if-depth
 ;
 ' dup alias: _
 
-: forever    #immediate
-	' lit , 2 , ' times , ' peek , ' push ,
+( : forever    #immediate
+	here ' lit , , ' push ,
+	scratchpad-addr  -- somewhere for repeat to write to
 ;
 : times      #immediate #hidden   ( -- addr )
 	' lit , here 0 , ' push ,  -- push the address to return to at end of loop
 	' times ,                  -- compile call to previous definition of times
-; -- #visible
+; #visible
 : repeat     #immediate
 	' return ,
 	here swap !
-;
+; )
 
-( -- Imperative looping
+-- Imperative looping
 : times      #immediate   ( n -- )
 	' push ,					-- push i
 	here   ' peek ,				-- this is where we jump back to
@@ -132,7 +133,6 @@ variable: if-depth
 	jump-target
 	' trash ,
 ;
-)
 
 -- Now let's get strings...
 exception: InvalidEscapeSequence
@@ -179,7 +179,7 @@ variable: string-terminator
 	align-dp
 ;
 
-(
+
 -- Date, time and decimal output functions
 
 : leading-zero
@@ -276,7 +276,7 @@ variable: tz
 : GMT ;
 : BST  1 hour + ;
 
-' BST tz !
+' GMT tz !
 
 : now ( -- date time )
 	-- WARNING: time is UTC.
@@ -289,9 +289,9 @@ variable: tz
 
 : decimal-scaling-factor s" 1.0" number drop ;
 
-: decimal-places
-	prior: decimal-places ! 
-;
+: decimal-places  #hidden
+	decimal-places ! 
+; #visible
 
 : *d  ( n d -- n )
 	-- multiply a number by a decimal, rescaling
@@ -305,7 +305,7 @@ variable: tz
 ;
 
 2 decimal-places ;
-)
+
 
 -- Fixed-point "constants"...
 : pi ( -- d )

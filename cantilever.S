@@ -819,20 +819,6 @@ prim call
 	jmp *(%eax)
 next
 
-# Repeat to the end of the function
-prim times, "times"      #  n -- 
-	pop %ecx              # get the rep-count
-	mov %esi, %eax        # get the instruction to start repeating at
-	xchg %ebp, %edi       # swap RSP and DP so we can use rep
-	dec %ecx              # ...or we run n+1 times
-	std                   # set direction flag, so RS continues to grow down
-	sub $CELL_SIZE, %edi  # pushrs is decr-then-store, stosl is store-then-decr
-	rep stosl             # now acts as pushrs
-	cld                   # don't forget to clear the direction flag!
-	add $CELL_SIZE, %edi  # undo the correction we did before
-	xchg %ebp, %edi       # replace the RSP and DP
-next
-
 # Numeric literals ###################################
 
 prim lit
@@ -1671,13 +1657,13 @@ word createConstant, "create-constant"  # val --
 	.long useAnon
 end
 word createVariable, "create-variable"  # --
-	.long useDict
+	.long semicolon, useDict
 	.long word, keeps, defvar
 	.long zero, storeinc
 	.long useAnon
 end
 word createWord, "create-word"
-	.long useDict
+	.long semicolon, useDict
 	.long word, keeps, defword
 end
 word immed, "#immediate", call
