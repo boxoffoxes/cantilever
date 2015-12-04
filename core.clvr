@@ -290,6 +290,9 @@ variable: tz
 : decimal-scaling-factor s" 1.0" number drop ;
 
 : decimal-places  #hidden
+	dup 8 > if
+		s" Warning: integers cannot be represented at this precision.\n" warns
+	endif
 	decimal-places ! 
 ; #visible
 
