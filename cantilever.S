@@ -633,6 +633,21 @@ prim max
 1:
 next
 
+prim umin // uint uint -- uint
+	pop %eax
+	cmpl (%esp), %eax
+	jae 1f
+	mov %eax, (%esp)
+1:
+next
+prim umax
+	pop %eax
+	cmpl (%esp), %eax
+	jbe 1f
+	mov %eax, (%esp)
+1:
+next
+
 # Data Stack manipulation prims ######################
 
 prim dspGet, "dsp@"
@@ -1686,12 +1701,12 @@ word semicolon, ";", call
 1:
 .long tailcall, useAnon
 
-word useDict
+word useDict, "{"
 	.long here, isAnonymous, zbranch, JUMP(1f)
 	.long dictPtr, get, dpSet
 1:
 end
-word useAnon
+word useAnon, "}"
 	.long here, isAnonymous, not, zbranch, JUMP(1f)
 	.long here, dictPtr, set
 1:

@@ -17,7 +17,7 @@ Misc/all-words : $(TARGET) foundation.clvr
 sloc: $(TARGET).S
 	cat $< | grep -v '^\s*$$' | grep -v '^\s*#[^a-z]' | grep -v '^\s*//' | wc -l
 
-$(TARGET): $(TARGET).S
+%: %.S
 	$(ASSEMBLER32) -o $@ $<
 
 
