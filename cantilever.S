@@ -848,12 +848,12 @@ next
 
 # String handling prims ##############################
 
-prim copys  # str addr -- str'
+prim copys  # str addr --
 	mov %edi, %edx  # save DP
 	pushrs %esi      # save IP
 	pop %edi
 	pop %esi
-	push %edi # push addr as final string location
+	# push %edi # push addr as final string location
 	lodsl
 	mov %eax, %ecx
 	stosl
