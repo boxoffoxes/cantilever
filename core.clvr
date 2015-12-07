@@ -177,6 +177,56 @@ variable: string-terminator
 	align-dp
 ;
 
+-- buffered output
+
+1000 cells buffer constant: OutputBufferStart
+variable: output-buffer
+OutputBufferStart output-buffer !
+: %s  ( s -- )
+	-- copy a string into the output buffer
+	dup @ push -- length
+	1 cell after   peek   output-buffer @   copy-bytes
+	pop   output-buffer @   +   output-buffer !
+;
+
+: %c  ( c -- )
+	-- copy a char into the output buffer
+	output-buffer @ !b
+	output-buffer inc-var
+;
+
+: _c 
+	0 -> drop ;;
+	_ -> %c tail: _c ;;
+;
+: %d  ( n -- )
+	-- copy an int into the output buffer
+	dup 0 < if
+		neg
+		'-' %c
+	endif
+	10 decompose
+	_c
+;
+
+: %f  ( c -- )
+	-- copy a decimal into the output buffer
+	decimal-places @ times
+		10 /mod swap
+	repeat
+	%d
+	'.' %c
+	decimal-places @ times
+		'0' + %c
+	repeat
+;
+
+: flush-output
+	0   output-buffer @   ! -- guarantee null-termination
+	OutputBufferStart putz
+	OutputBufferStart output-buffer !
+;
+
 
 -- Date, time and decimal output functions
 
@@ -270,6 +320,7 @@ Hour 24 *    constant: SecondsInADay
 variable: tz
 
 : hour Hour * ;
+' hour alias: hours
 
 : GMT ;
 : BST  1 hour + ;
@@ -313,6 +364,27 @@ variable: tz
 	s" 3.1415926535898" number drop
 ;
 
+
+: %0d
+	dup 
+	9 <= if   '0' %c   endif
+	%d
+;
+: %date  ( date -- )
+	-- copy a date into the output buffer
+	explode-date push push
+	%d '-' %c
+	pop %0d '-' %c
+	pop %0d
+;
+
+: %time  ( time -- )
+	-- copy a time into the output buffer
+	explode-time push push
+	%0d ':' %c
+	pop %0d ':' %c
+	pop %0d
+;
 
 
 -- vim:ft=cantilever

@@ -848,6 +848,16 @@ next
 
 # String handling prims ##############################
 
+prim copyBytes, "copy-bytes"  # from nbytes to --
+	mov %edi, %edx  # save DP
+	pushrs %esi      # save IP
+	pop %edi
+	pop %ecx
+	pop %esi
+	rep movsb
+	poprs %esi
+	mov %edx, %edi
+next
 prim copys  # str addr --
 	mov %edi, %edx  # save DP
 	pushrs %esi      # save IP
