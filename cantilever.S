@@ -865,7 +865,17 @@ prim copyBytes, "copy-bytes"  # from nbytes to --
 	poprs %esi
 	mov %edx, %edi
 next
-prim copys  # str addr --
+prim copy, "copy" # from ncells to --
+	mov %edi, %edx # save DP
+	pushrs %esi
+	pop %edi
+	pop %ecx
+	pop %esi
+	rep movsl
+	poprs %esi
+	mov %edx, %edi
+next
+/* prim copys  # str addr --
 	mov %edi, %edx  # save DP
 	pushrs %esi      # save IP
 	pop %edi
@@ -878,9 +888,20 @@ prim copys  # str addr --
 	rep movsl
 	poprs %esi
 	mov %edx, %edi
+next */
+
+prim keep  # addr len -- addr
+	# move a temporary value len cells long from addr into the dictionary 
+	align_dp
+	mov %esi, %edx  # save IP
+	pop %ecx        # length in cells
+	pop %esi        # get source
+	push %edi       # push permanent address
+	rep movsl
+	mov %edx, %esi  # restore IP
 next
 
-prim keeps  # tmpStr -- str
+/* prim keeps  # tmpStr -- str
 	# move a temporary string to the dictionary
 	align_dp
 	mov %esi, %edx
@@ -892,7 +913,7 @@ prim keeps  # tmpStr -- str
 	string_len_in_cells %ecx
 	repe movsl
 	mov %edx, %esi
-next
+next */
 
 prim strEq # str str -- bool
 	xor %edx, %edx
@@ -1222,6 +1243,16 @@ end
 # Strings #############################################
 
 constant spc, 32, "'spc'"
+
+word stringCellLength, "string-cell-length"   #  str -- n
+	.long get, lit, CELL_BITS, rshift, inc, inc  # byte length, plus null, plus length field
+end
+word keeps   # tmpStr -- str
+	.long dup, stringCellLength, keep
+end
+word copys   # str addr -- 
+	.long push, dup, stringCellLength, pop, copy
+end
 
 word scanz # zstr pred -- addr
 	.long push, dec
@@ -1629,15 +1660,13 @@ word nl
 	.long lit, '\n', putc
 end
 
-word compileWord, "compile-word" // cfa --
-	.long storeinc
-end
-
 word compileLiteral, "compile-literal" // n --
 	.long quote, lit, storeinc, storeinc
 end
 
 # Words that create words ############################
+
+variable NotInADataBlock
 
 word lambda, "[", call  # -- addr
 	.long quote, data, storeinc
@@ -1648,7 +1677,21 @@ word endLambda, "]", call  # addr --
 	.long quote, return, storeinc
 	.long here, over, one, cell, add, sub, swap, set
 end
+word dataLength, "data-length"  # lambda -- len
+	.long dup, lit, 2, cell, sub, get   # fetch the data instruction
+	.long quote, data, eq, zbranch, JUMP(1f)
+	.long one, cell, sub, get, return      # get the length in bytes and return
+1:
+	.long NotInADataBlock, raise
+end
 
+word as, , call # addr -- 
+	# a word to compile a definition from a lambda in anonymous code space
+	.long semicolon, useDict
+	.long word, keeps, header
+	.long dup, dataLength  # get length of data block
+	.long lit, CELL_BITS, rshift, keep, drop  # convert to cell length and keep.
+end
 
 word header  # str --
 	.long dpAlign
