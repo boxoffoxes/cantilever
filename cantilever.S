@@ -368,14 +368,12 @@ prim syscall0  # id -- result
 	int $0x80
 	push %eax
 next
-
 prim syscall1  # arg id -- result
 	pop %eax
 	pop %ebx
 	int $0x80
 	push %eax
 next
-
 prim syscall2  # arg2 arg1 id -- result
 	pop %eax
 	pop %ebx
@@ -383,7 +381,6 @@ prim syscall2  # arg2 arg1 id -- result
 	int $0x80
 	push %eax
 next
-
 prim syscall3  # arg3 arg2 arg1 id -- result
 	pop %eax
 	pop %ebx
@@ -853,7 +850,7 @@ prim quote, "'"
 	push %eax
 next
 
-# String handling prims ##############################
+# Memory copying prims ###############################
 
 prim copyBytes, "copy-bytes"  # from nbytes to --
 	mov %edi, %edx  # save DP
@@ -875,21 +872,6 @@ prim copy, "copy" # from ncells to --
 	poprs %esi
 	mov %edx, %edi
 next
-/* prim copys  # str addr --
-	mov %edi, %edx  # save DP
-	pushrs %esi      # save IP
-	pop %edi
-	pop %esi
-	# push %edi # push addr as final string location
-	lodsl
-	mov %eax, %ecx
-	stosl
-	string_len_in_cells %ecx
-	rep movsl
-	poprs %esi
-	mov %edx, %edi
-next */
-
 prim keep  # addr len -- addr
 	# move a temporary value len cells long from addr into the dictionary 
 	align_dp
@@ -901,19 +883,7 @@ prim keep  # addr len -- addr
 	mov %edx, %esi  # restore IP
 next
 
-/* prim keeps  # tmpStr -- str
-	# move a temporary string to the dictionary
-	align_dp
-	mov %esi, %edx
-	pop %esi
-	push %edi  # push permanent string address
-	lodsl  # length into %eax
-	mov %eax, %ecx
-	stosl  // save length to dest
-	string_len_in_cells %ecx
-	repe movsl
-	mov %edx, %esi
-next */
+# String handling prims ##############################
 
 prim strEq # str str -- bool
 	xor %edx, %edx

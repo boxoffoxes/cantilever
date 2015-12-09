@@ -177,6 +177,24 @@ variable: string-terminator
 	align-dp
 ;
 
+
+-- Sleep
+
+exception: CouldNotSleep
+
+: nsleep ( s ns -- )
+	-- sleep for s seconds and ns nanoseconds
+	push push
+	0 rsp@  SysNanosleep  syscall2
+	trash trash
+	if raise CouldNotSleep endif
+;
+: sleep ( n -- ) 
+	-- Sleep for n seconds
+	0 nsleep
+;
+
+
 -- buffered output
 
 1000 cells buffer constant: OutputBufferStart
