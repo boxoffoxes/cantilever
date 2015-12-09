@@ -803,6 +803,13 @@ prim return
 	poprs %esi
 next
 
+prim data
+	mov (%esi), %eax
+	lea 4(%esi), %edx
+	lea 4(%esi, %eax), %esi
+	push %edx
+next
+
 prim branch
 	add (%esi), %esi
 next
@@ -1631,6 +1638,19 @@ word compileLiteral, "compile-literal" // n --
 end
 
 # Words that create words ############################
+
+word lambda, "[", call  # -- addr
+	.long quote, data, storeinc
+	.long here, zero, storeinc
+	.long DoAddr, storeinc
+end
+word endLambda, "]", call  # addr --
+	.long quote, return, storeinc
+	.long here, over, one, cell, add, sub, swap, set
+end
+word as, , call   # lambda -- 
+end
+
 
 word header  # str --
 	.long dpAlign
