@@ -2,8 +2,7 @@
 10 constant: '\n'
 27 constant: '\e'
 
-: end-of-comment? '\n' = ;
-: --   #immediate   ' end-of-comment? scan   drop  ;
+: --   [ '\n' = ] scan drop   ;   #immediate
 
 -- and now we have comments. Yay!
 
@@ -239,10 +238,13 @@ OutputBufferStart output-buffer !
 	repeat
 ;
 
+: clear-output
+	OutputBufferStart output-buffer !
+;
 : flush-output
 	0   output-buffer @   ! -- guarantee null-termination
 	OutputBufferStart putz
-	OutputBufferStart output-buffer !
+	clear-output
 ;
 
 

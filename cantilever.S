@@ -954,14 +954,18 @@ month_table:
 	#      J    F   M   A   M   J   J    A    S    O    N    D
 	.long 306, 337, 0, 31, 61, 92, 122, 153, 184, 214, 245, 275
 
-prim number  # str -- int bool
+word number  #  str -- int bool
+	.long one, cell, add, znumber
+end
+
+prim znumber  # zstr -- int bool
 	# see if zstr conforms to one of the supported 
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
 	xor %edx, %edx
 	pushrs %esi
 	pop %esi  # zstr in %esi
-	add $CELL_SIZE, %esi
+	# add $CELL_SIZE, %esi
 	# check for negative number
 	movb (%esi), %al
 	cmpb $'-', %al
