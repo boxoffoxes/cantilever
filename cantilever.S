@@ -1648,8 +1648,6 @@ word endLambda, "]", call  # addr --
 	.long quote, return, storeinc
 	.long here, over, one, cell, add, sub, swap, set
 end
-word as, , call   # lambda -- 
-end
 
 
 word header  # str --

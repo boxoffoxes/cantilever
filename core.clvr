@@ -387,4 +387,26 @@ variable: tz
 ;
 
 
+-- Concatenative style combinators
+
+: ifte  ( S bool then else -- T )
+	push push
+	if trash pop else pop trash endif
+	call
+;
+: for  ( S n lambda -- T )
+	-- apply lambda to S n times
+	push
+	0 -> drop trash ;;
+	_ -> peek swap 1- push call pop pop tail: for ;;
+;
+: while ( S lambda -- T )
+	push
+	0 -> drop trash ;;
+	_ -> peek call pop tail: while ;;
+;
+: dip  ( S x lambda -- T x )
+	swap push call pop
+;
+
 -- vim:ft=cantilever
