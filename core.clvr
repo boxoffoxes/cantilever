@@ -429,4 +429,9 @@ variable: tz
 	swap push call pop
 ;
 
+
+-- Allow us to run cantilever scripts on unix...
+
+: #!/usr/bin/env   [ '\n' = ] scan drop   ;   #immediate
+
 -- vim:ft=cantilever

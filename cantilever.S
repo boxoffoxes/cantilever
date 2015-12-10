@@ -1197,6 +1197,7 @@ word reset
 # end
 
 word handleArgs, "handle-args"
+	.long semicolon  # any uncalled code from the previous file?
 	# first set this function to be our EOF handler
 	.long quote, handleArgs, handles, EndOfFile
 	# check if there's an argument left to handle
