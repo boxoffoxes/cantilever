@@ -882,6 +882,14 @@ prim keep  # addr len -- addr
 	rep movsl
 	mov %edx, %esi  # restore IP
 next
+prim forget  # -- 
+	# take the next compiled word, and delete it and 
+	# everything following it in the dictionary
+	lodsl
+	sub $CFA_OFFS, %eax
+	mov (%eax), %eax
+	mov %eax, var_dictionary
+next
 
 # String handling prims ##############################
 
@@ -1197,9 +1205,12 @@ word reset
 # end
 
 word handleArgs, "handle-args"
-	.long semicolon  # any uncalled code from the previous file?
 	# first set this function to be our EOF handler
-	.long quote, handleArgs, handles, EndOfFile
+	.long quote, handleNextArg, handles, EndOfFile
+	.long tailcall, handleNextArg
+end
+word handleNextArg, "handle-next-arg"
+	# .long semicolon  # any uncalled code from the previous file?
 	# check if there's an argument left to handle
 	.long nextArg, dup, zbranch, JUMP(1f)
 	.long zopenIn, tailcall, reset
@@ -1208,7 +1219,7 @@ word handleArgs, "handle-args"
 	# reset EOF handler
 	.long drop, stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
-end
+.long tailcall, reset
 word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
@@ -1239,12 +1250,11 @@ word scanz # zstr pred -- addr
 2:
 	.long nip, trash
 end
-
-word scan  # pred -- c
+word scanIn "scan-in"  # pred -- c
 	# read chars from in-channel until pred returns true
-	.long stash  # leave pred on the stack to give drop something to work on
+	.long push  # store the pred off the stack
 1:
-	.long drop, key, dup, peek, call
+	.long key, peek, call
 	.long zbranch, JUMP(1b)
 	.long trash
 end
@@ -1541,34 +1551,6 @@ word incVar "inc-var"
 end
 word decVar "dec-var"
 	.long stash, get, dec, pop, set
-end
-
-
-
-variable _iterFunc
-
-word search // S list (entry -> bool) -- T ?entry
-	// todo: borked
-	.long _iterFunc, set, push
-1:
-	.long pop, get, stash
-	.long zbranch, JUMP(2f)
-	.long peek, _iterFunc, get, call
-	.long zbranch, JUMP(1b)  # not found, Try next
-2:
-	.long pop
-	// .long lit, 32, putc, dup, putx, nl
-end
-word each  # dict fun -- 
-	.long push
-1:
-	.long get
-	.long dup, zbranch, JUMP(2f)
-	.long peek, over, push, call
-	.long pop
-	.long branch, JUMP(1b)
-2:
-	.long trash, drop
 end
 
 

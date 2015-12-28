@@ -2,7 +2,7 @@
 10 constant: '\n'
 27 constant: '\e'
 
-: --   [ '\n' = ] scan drop   ;   #immediate
+: --   [ '\n' = ] scan-in   ;   #immediate
 
 -- and now we have comments. Yay!
 
@@ -75,6 +75,12 @@ variable: if-depth
 : (    #immediate    1  ' _nestable-comment while-word    drop ;
 ( and now we have better comments! ( because they can be
   nested, and can span multiple lines ) )
+
+-- Get and Set with post-increment
+: !+  ( x addr -- addr' )   stash !   pop 1 cell after   ;
+: !-  ( x addr -- addr' )   stash !   pop 1 cell before  ;
+: @+  ( addr -- addr' x )   stash 1 cell after   pop @   ;
+
 
 
 -- let's implement simple pattern matching
@@ -153,7 +159,7 @@ variable: string-terminator
 ;
 : compile-string ( char -- str )
 	string-terminator !
-	here stash   0 ,  ' end-of-string? scan   drop
+	here stash   0 ,  ' end-of-string? scan-in
 	dup 1 cell after   lenz   swap !
 	pop
 ;
@@ -421,17 +427,32 @@ variable: tz
 	_ -> peek swap 1- push call pop pop tail: for ;;
 ;
 : while ( S lambda -- T )
-	push
+	stash call
 	0 -> drop trash ;;
-	_ -> peek call pop tail: while ;;
+	_ -> drop pop tail: while ;;
 ;
 : dip  ( S x lambda -- T x )
 	swap push call pop
 ;
 
+-- Support for local variables
+
+: begin-scope  ( str -- )
+	' forget define
+;
+: end-scope
+	
+;
+
+: locals:  #immediate
+	begin-scope
+	create
+;
+
+
 
 -- Allow us to run cantilever scripts on unix...
 
-: #!/usr/bin/env   [ '\n' = ] scan drop   ;   #immediate
+: #!/usr/bin/env   [ '\n' = ] scan-in   ;   #immediate
 
 -- vim:ft=cantilever
