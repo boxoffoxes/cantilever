@@ -437,19 +437,6 @@ variable: tz
 
 -- Support for local variables
 
-: begin-scope  ( str -- )
-	' forget define
-;
-: end-scope
-	
-;
-
-: locals:  #immediate
-	begin-scope
-	create
-;
-
-
 
 -- Allow us to run cantilever scripts on unix...
 

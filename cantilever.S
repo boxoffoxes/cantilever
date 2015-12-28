@@ -190,6 +190,7 @@ next
 
 .align CELL_SIZE
 _fill_buffer:
+	push %ebx
 	mov $__NR_read, %eax
 	mov var_inChannel, %ebx
 	mov var_ioBuffer, %ecx
@@ -200,19 +201,21 @@ _fill_buffer:
 	jbe _eof
 	add %eax, %ecx
 	mov %ecx, var_bufend
+	pop %ebx
 	// fallthrough
 .align CELL_SIZE
 _key:
-	mov var_bufpos, %ebx
-	cmp var_bufend, %ebx
+	mov var_bufpos, %edx
+	cmp var_bufend, %edx
 	jae _fill_buffer
-	movzbl (%ebx), %eax
-	inc %ebx
-	mov %ebx, var_bufpos
+	movzbl (%edx), %eax
+	inc %edx
+	mov %edx, var_bufpos
 ret
 
 .align CELL_SIZE
 _eof:
+	pop %ebx  # we're called from fill-buffer, which preserves %ebx
 	mov var_ioBuffer, %eax
 	mov %eax, var_bufend
 	mov %eax, var_bufpos
@@ -369,36 +372,44 @@ prim syscall0  # id -- result
 	push %eax
 next
 prim syscall1  # arg id -- result
+	pushrs %ebx
 	pop %eax
 	pop %ebx
 	int $0x80
 	push %eax
+	poprs %ebx
 next
 prim syscall2  # arg2 arg1 id -- result
+	pushrs %ebx
 	pop %eax
 	pop %ebx
 	pop %ecx
 	int $0x80
 	push %eax
+	poprs %ebx
 next
 prim syscall3  # arg3 arg2 arg1 id -- result
+	pushrs %ebx
 	pop %eax
 	pop %ebx
 	pop %ecx
 	pop %edx
 	int $0x80
 	push %eax
+	poprs %ebx
 next
 
 prim syscall6  # arg6 arg5 ... arg1 id -- result
 	# This is slightly different because for >5 args
 	# Linux expects args to be passed by pointer.
 	# In this case we simply use the stack
+	pushrs %ebx
 	pop %eax
 	mov %esp, %ebx
 	int $0x80
 	add $(6*CELL_SIZE), %esp
 	push %eax
+	poprs %ebx
 next
 
 # IO prims ###########################################
@@ -573,20 +584,24 @@ prim mulDiv, "*/" // int int int -- int
 next
 
 prim udivmod, "/modu" # int int -- int int
+	pushrs %ebx
 	pop %ebx
 	pop %eax
 	xor %edx, %edx
 	divl %ebx
 	push %eax
 	push %edx
+	poprs %ebx
 next
 prim divmod  "/mod" # int int -- int int
+	pushrs %ebx
 	pop %ebx
 	pop %eax
 	cdq  // sign-extend %eax into %edx
 	idivl %ebx
 	push %eax
 	push %edx
+	poprs %ebx
 next
 
 prim sub, "-" // int int -- int
@@ -882,11 +897,12 @@ prim keep  # addr len -- addr
 	rep movsl
 	mov %edx, %esi  # restore IP
 next
-prim forget  # -- 
+prim forget  # cfa -- 
 	# take the next compiled word, and delete it and 
 	# everything following it in the dictionary
-	lodsl
+	pop %eax
 	sub $CFA_OFFS, %eax
+	mov %eax, var_dictPtr
 	mov (%eax), %eax
 	mov %eax, var_dictionary
 next
@@ -971,6 +987,7 @@ prim znumber  # zstr -- int bool
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
 	xor %edx, %edx
+	pushrs %ebx
 	pushrs %esi
 	pop %esi  # zstr in %esi
 	# add $CELL_SIZE, %esi
@@ -1134,6 +1151,7 @@ _day:
 _num_err:
 	pop %edx # discard sign
 	poprs %esi
+	poprs %ebx
 	push $0
 	push $0
 next
@@ -1147,6 +1165,7 @@ _num_done:
 	neg %eax
 4:
 	poprs %esi
+	poprs %ebx
 	push %eax
 	push $-1
 next
