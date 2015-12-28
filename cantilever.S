@@ -730,6 +730,15 @@ prim trash
 	poprs %eax
 next
 
+prim frame
+	pushrs %ebx
+	mov %esp, %ebx
+next
+prim unframe
+	mov %ebx, %esp
+	poprs %ebx
+next
+
 # Instruction pointer ################################
 
 prim ipGet, "ip@"
