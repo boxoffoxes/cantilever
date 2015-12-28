@@ -732,14 +732,18 @@ next
 
 prim frame
 	pushrs %ebx
-	mov %esp, %ebx
+	mov %ebp, %ebx
 next
 prim unframe
-	mov %ebx, %esp
+	mov %ebx, %ebp
 	poprs %ebx
 next
-prim frameGet, "frame@"
-	push %ebx
+prim local  # n -- addr
+	# get cell n of current frame
+	pop %eax
+	not %eax
+	lea (%ebx, %eax, 4), %edx
+	push %edx
 next
 
 # Instruction pointer ################################
