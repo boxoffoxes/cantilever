@@ -127,7 +127,7 @@ str_text_\label:
 
 .macro pushrs reg
 	lea -CELL_SIZE(%ebp), %ebp
-	mov \reg, (%ebp)
+	movl \reg, (%ebp)
 .endm
 
 .macro poprs, reg
@@ -745,6 +745,24 @@ prim local  # n -- addr
 	lea (%ebx, %eax, 4), %edx
 	push %edx
 next
+prim locals  # n -- 
+	# create a frame with n local variables
+	pushrs %ebx
+	mov %ebp, %ebx
+	pop %ecx
+1:
+	test %ecx, %ecx
+	jz 2f
+	pop %eax
+	dec %ecx
+	pushrs %eax
+	jmp 1b
+2:
+	pushrs $do_unframe
+next
+
+do_unframe:
+	.long unframe, return
 
 # Instruction pointer ################################
 
