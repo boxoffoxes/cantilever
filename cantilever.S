@@ -738,6 +738,9 @@ prim unframe
 	mov %ebx, %esp
 	poprs %ebx
 next
+prim frameGet, "frame@"
+	push %ebx
+next
 
 # Instruction pointer ################################
 
