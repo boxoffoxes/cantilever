@@ -738,7 +738,7 @@ prim unframe
 	mov %ebx, %ebp
 	poprs %ebx
 next
-prim local  # n -- addr
+prim local, "$$"  # n -- addr
 	# get cell n of current frame
 	pop %eax
 	not %eax
