@@ -416,15 +416,19 @@ variable: tz
 -- Concatenative style combinators
 
 : ifte  ( S bool then else -- T )
-	push push
-	if trash pop else pop trash endif
-	call
+	-- local variables used as a jump table!
+	2 locals  -- 0 -> else   1 -> then
+	bool neg local @ call
+;
+: i  1 local @ ;
+: _for
+	i
+	0 -> drop ;;
+	_ -> drop   1 local dec-var   0 local @ call   tail: _for ;;
 ;
 : for  ( S n lambda -- T )
 	-- apply lambda to S n times
-	push
-	0 -> drop trash ;;
-	_ -> peek swap 1- push call pop pop tail: for ;;
+	2 locals  _for -- 0 -> lambda  1 -> n 
 ;
 : while ( S lambda -- T )
 	stash call
@@ -434,6 +438,64 @@ variable: tz
 : dip  ( S x lambda -- T x )
 	swap push call pop
 ;
+
+-- Local variables
+
+exception: Bollocks
+
+: spc  'spc' putc ;
+: see  ( -- )
+	dictionary @
+	dup is-anon? if
+		Bollocks raise
+	endif
+	dup putx spc
+	dup @ putx spc
+	dup @ @ putx spc
+	dup .label puts  spc
+	drop
+;
+
+: deflocal
+	use-dict defdoes  ( n str -- )
+		,
+	does
+		@ compile-literal  ' local ,
+;
+
+: s->z  1 cell after ;
+45 45 8 shift-up +  constant: '--'
+
+: end-local-scope  ( dict -- )
+	s" it works\n" puts
+	dictionary !
+	` ;
+;
+
+: v(  #immediate  ( -- dict )
+	-- preserve old dictionary
+	dictionary @
+	-- switch to a temporary dictionary for locals
+	here   dup 4096 cells after   dp!
+	-- override the defition of ;
+	' ` ; .cfa->.label defword [ end-local-scope ] , ` #immediate
+	-- a count of our temp vars...
+	0
+	-- pile them on the stack. We need to reverse the
+	-- order...
+	[  dup s->z @
+		'--' ->  drop drop   [ s->z @ ')' <> ] while-word   false ;;
+		')'  ->  drop drop false ;;
+		_    ->  drop keeps swap 1+ true ;;
+	] while-word
+	-- the count is on top of the stack...
+	stash times    peek swap deflocal    repeat
+	-- restore the dictionary pointer
+	dp!
+	-- compile the local stack-frame code
+	pop compile-literal  ' locals ,
+;
+
 
 -- Allow us to run cantilever scripts on unix...
 

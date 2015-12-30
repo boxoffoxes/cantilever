@@ -760,6 +760,14 @@ prim locals  # n --
 2:
 	pushrs $do_unframe
 next
+prim incVar "inc-var"
+	pop %eax
+	incl (%eax)
+next
+prim decVar "dec-var"
+	pop %eax
+	decl (%eax)
+next
 
 do_unframe:
 	.long unframe, return
@@ -1599,13 +1607,6 @@ word bufferFile "buffer-file"  # str -- addr len fd
 	.long bufferZFile
 end
 
-word incVar "inc-var"
-	.long stash, get, inc, pop, set
-end
-word decVar "dec-var"
-	.long stash, get, dec, pop, set
-end
-
 
 # Dictionary lookup ###################################
 
@@ -1717,7 +1718,7 @@ word define  #  str interp --
 end
 
 word defdoes   # str --
-	.long quote, dodoes, define
+	.long quote, dodoes, define, zero, storeinc  # behaviour field
 end
 word defword   # str -- 
 	.long quote, do, define
@@ -1732,7 +1733,6 @@ end
 word create
 	.long semicolon, useDict
 	.long word, keeps, defdoes
-	.long zero, storeinc  # space for the behaviour
 end
 word createImm, "create-immed"
 	.long create, immed
@@ -1782,12 +1782,12 @@ word semicolon, ";", call
 1:
 .long tailcall, useAnon
 
-word useDict, "{"
+word useDict, "use-dict"
 	.long here, isAnonymous, zbranch, JUMP(1f)
 	.long dictPtr, get, dpSet
 1:
 end
-word useAnon, "}"
+word useAnon, "use-anon"
 	.long here, isAnonymous, not, zbranch, JUMP(1f)
 	.long here, dictPtr, set
 1:
