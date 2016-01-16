@@ -15,8 +15,8 @@
 
 -- Lets us hide the current definition and call an earlier definition with 
 -- the same name...
-: #hidden   #immediate   dictionary @ .label   dup @ not  swap ! ; 
-: #visible  #immediate  ` #hidden ; 
+: #hidden   #immediate   dictionary @ .label   dec-var ;
+: #visible  #immediate   dictionary @ .label   inc-var ;
 
 -- make address manipulation more readable...
 ' cell alias: cells
@@ -447,26 +447,13 @@ variable: tz
 
 -- Local variables
 
-exception: Bollocks
-
 : spc  'spc' putc ;
-: see  ( -- )
-	dictionary @
-	dup is-anon? if
-		Bollocks raise
-	endif
-	dup putx spc
-	dup @ putx spc
-	dup @ @ putx spc
-	dup .label puts  spc
-	drop
-;
 
 : deflocal
 	use-dict defdoes  ( n str -- )
 		, ` #immediate
 	does
-		@ dup putn compile-literal  ' $$ ,
+		@ compile-literal  ' $$ ,
 ;
 
 : s->z  1 cell after ;
@@ -497,11 +484,14 @@ exception: Bollocks
 		_    ->  drop keeps swap 1+ true ;;
 	] while-word
 	-- the count is on top of the stack...
-	stash times    peek swap deflocal    repeat
+	1 locals
+	-- Because the loop counter counts down we have to do some
+	-- mathematicsl gymnastics or variables are assigned in reverse order
+	0 $$ @ times    0 $$ @ peek - 1- swap deflocal    repeat
 	-- restore the dictionary pointer
 	dp!
 	-- compile the local stack-frame code
-	pop compile-literal  ' locals ,
+	0 $$ @  compile-literal  ' locals ,
 ;
 
 

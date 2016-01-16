@@ -660,6 +660,18 @@ prim umax
 1:
 next
 
+prim sumCells, "sum-cells"  # array count -- int
+	pop %ecx
+	pop %edx
+	xor %eax, %eax
+1:
+	jcxz 2f
+	dec %ecx
+	add %edx, %eax
+	jmp 1b
+2:
+next
+
 # Data Stack manipulation prims ######################
 
 prim dspGet, "dsp@"
