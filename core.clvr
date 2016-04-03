@@ -234,6 +234,10 @@ OutputBufferStart output-buffer !
 
 : %f  ( c -- )
 	-- copy a decimal into the output buffer
+	dup 0 < if
+		neg
+		'-' %c
+	endif
 	decimal-places @ times
 		10 /mod swap
 	repeat
@@ -415,11 +419,10 @@ variable: tz
 
 -- Concatenative style combinators
 
-: ifte  ( S bool then else -- T )
-	-- local variables used as a jump table!
-	2 locals  -- 0 -> else   1 -> then
-	bool neg $$ @ call
-;
+: dip  ( S x q -- T x )    swap push call pop ;
+: bi   ( x y q -- x' y' )  stash dip pop call ;  -- apply q to x and y
+: ifte  ( S bool then else -- T ) ? call ;
+
 : i  1 $$ @ ;
 : _for
 	i
@@ -494,6 +497,31 @@ variable: tz
 	0 $$ @  compile-literal  ' locals ,
 ;
 
+
+-- Structures
+
+: struct: #immediate
+	create
+		here 0 , 0
+	does
+		@   -- returns size of structure when called
+;
+: bytes:  #immediate
+	create  ( offs size -- )
+		over , +
+	does
+		@ +
+;
+: cells:  #immediate
+	create  ( offs n -- )
+		over ,  cells +
+	does
+		@ +
+;
+: cell:   #immediate
+	` cells:
+;
+: end-struct  ` ; swap ! ;  #immediate  -- save the struct size
 
 -- Allow us to run cantilever scripts on unix...
 

@@ -458,9 +458,9 @@ prim between "btw?"  # n lower upper -- bool
 	pop %edx  # upper
 	pop %ecx  # lower
 	pop %eax  # n
-	sub %ecx, %edx
-	sub %ecx, %eax
-	xor %ecx, %ecx
+	sub %ecx, %edx  # upper-lower
+	sub %ecx, %eax  # n-lower
+	xor %ecx, %ecx  
 	cmp %edx, %eax
 	seta %cl
 	dec %ecx
@@ -905,6 +905,22 @@ next
 prim call
 	pop %eax
 	jmp *(%eax)
+next
+
+prim select "?"
+	xor %edx, %edx
+	xor %ecx, %ecx
+	mov 8(%esp), %eax  # cond
+	test %eax, %eax
+	setnz %dl
+	setz %cl
+	dec %edx
+	dec %ecx
+	and (%esp), %edx  # else
+	and 4(%esp), %ecx # then
+	addl %ecx, %edx
+	lea 8(%esp), %esp
+	mov %edx, (%esp)
 next
 
 # Numeric literals ###################################
