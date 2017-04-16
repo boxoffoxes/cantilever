@@ -76,10 +76,10 @@ variable: if-depth
 ( and now we have better comments! ( because they can be
   nested, and can span multiple lines ) )
 
--- Get and Set with post-increment
+-- Get and Set with post-increment (@+ is now a prim)
 : !+  ( x addr -- addr' )   stash !   pop 1 cell after   ;
 : !-  ( x addr -- addr' )   stash !   pop 1 cell before  ;
-: @+  ( addr -- addr' x )   stash 1 cell after   pop @   ;
+-- : @+  ( addr -- addr' x )   stash 1 cell after   pop @   ;
 
 
 
@@ -354,14 +354,22 @@ variable: tz
 
 : GMT ;
 : BST  1 hour + ;
+: EET  2 hours + ;
+: EEST 3 hours + ;
 
 ' GMT tz !
 
+: to-unixtime  ( date time -- sec )
+	push  UnixEpoch -  SecondsInADay *  pop +
+;
+: unix-to-lalian ( unix -- date time )
+	SecondsInADay /mod push   UnixEpoch +   pop
+;
 : now ( -- date time )
 	-- WARNING: time is UTC.
 	0 SysTime syscall1
 	tz @ call
-	SecondsInADay /mod push   UnixEpoch +   pop
+	unix-to-lalian
 ;
 : today ( -- date ) now drop ;
 : time  ( -- time ) now nip  ;

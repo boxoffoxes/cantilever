@@ -803,6 +803,12 @@ prim getByte, "@b"
 	push %eax
 next
 
+prim getStep "@+"  # addr -- addr' n
+	mov (%esp), %eax
+	addl $4, (%esp)
+	push (%eax)
+next
+
 prim set "!" # int addr -- 
 	pop %eax
 	pop %edx
