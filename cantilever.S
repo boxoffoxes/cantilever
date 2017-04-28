@@ -985,7 +985,7 @@ next
 
 # String handling prims ##############################
 
-prim strEq # str str -- bool
+prim strEq "s=" # str str -- bool
 	xor %edx, %edx
 	pushrs %esi
 	pushrs %edi

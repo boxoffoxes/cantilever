@@ -1,16 +1,23 @@
 exception: Failure
+exception: Success
 exception: TestError
 
-: test-success  s" +" puts ;
-: test-failure  s" -"  puts  Failure raise ;
+variable: test-number
+
+: test-success  s" ." puts ;
+: test-failure  s" \n*** test " %s  test-number @ %d  s"  failed\n" %s flush-output  1 exit ;
 : test
-	= if test-success else test-failure endif
+	test-number inc-var
+	= if Success raise else Failure raise endif
 ;
 
 -- testing infrstructure and exception handling
-: test-test s"  (should fail)\n"  puts  39   0 handles Failure ;
-' test-test handles Failure
+: test-test  39  ;
+' test-test    handles Failure
+' test-failure handles Success
 0 1 test    39 <> if TestError raise endif
+' test-failure handles Failure
+' test-success handles Success
 1 1 test  -- succeeds
 
 
@@ -24,8 +31,9 @@ false                0 test
 
 
 -- Logic
-1 bool              true test
-0 bool             false test
+-1 bool             true test
+ 1 bool             true test
+ 0 bool            false test
 
  1  1 =             true test
 -1  1 <>            true test
@@ -67,6 +75,17 @@ ds-depth    0   test
  17 10 min   10 test
 -17 10 min  -17 test
 
+
+-- Stack shuffling
+1 2  drop       1 test
+1 2  swap drop  2 test
+2 50 swap /    25 test
+1 2  nip        2 test  ds-depth 0 test
+
+99 push ds-depth                 0 test    pop        99 test 
+rs-depth push rs-depth      pop 1+ test
+rs-depth push rs-depth     peek 1+ test    pop  rs-depth test
+rs-depth stash trash      rs-depth test
 
 -- bitwise
  0  0 and     0 test
@@ -114,6 +133,18 @@ ds-depth    0   test
 01:00:00                                 3600 test
 23:59:60                        SecondsInADay test
 1970-01-01 00:00:00 to-unixtime             0 test 
+2017-04-23 explode-date                    23 test  4 test  2017 test
+2015-02-29 explode-date                     1 test  3 test  2015 test
+
+
+-- decimals
+1.0     100 test
+
+
+-- chars
+'7'                55 test
+7 digit-to-char   '7' test
+10 16 decompose   'a' test   0 test
 
 
 -- control structure
@@ -123,10 +154,18 @@ true  if -17 else 10 endif  -17 test
 77    if -17 else 10 endif  -17 test
 
 
+-- strings
+s" hello world"          lens  11 test
+s" this is cantilever\n" lens  19 test
+s" embedded \"quotes\""  lens  17 test
+s" embeeded \0 null"     lens  15 test
+s" blah" s" wiffle" s=      false test
+s" blah" s" blah"   s=       true test
 
 -- Final test-harness sanity check
 ds-depth    0   test ;
 
-'\n' putc   0 exit ;
+s"  ok\n" puts   0 exit ;
+
 
 -- vim:ft=cantilever

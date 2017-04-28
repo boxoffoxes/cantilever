@@ -142,6 +142,7 @@ variable: if-depth
 -- Now let's get strings...
 exception: InvalidEscapeSequence
 variable: string-terminator
+variable: str-len
 : handle-str-esc  ( c -- c )
 	'e' -> drop '\e' ;;
 	'n' -> drop '\n' ;;
@@ -151,16 +152,18 @@ variable: string-terminator
 	'\' ->           ;;
 	_   -> drop drop drop   InvalidEscapeSequence raise ;;
 ;
+: str-compile-char ( c -- ) ,b  str-len inc-var ;
 : end-of-string?  ( c -- bool )
 	string-terminator @
-	    -> drop   0 ,b   align-dp     true  ;;
-	'\' -> drop key handle-str-esc ,b false ;;
-	_   -> ,b                         false ;;
+	    -> drop   0 ,b   align-dp                   true  ;;
+	'\' -> drop key handle-str-esc str-compile-char false ;;
+	_   -> str-compile-char                         false ;;
 ;
 : compile-string ( char -- str )
+	0 str-len !
 	string-terminator !
 	here stash   0 ,  ' end-of-string? scan-in
-	dup 1 cell after   lenz   swap !
+	str-len @   swap !
 	pop
 ;
 
