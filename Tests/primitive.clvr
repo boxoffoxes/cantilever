@@ -11,11 +11,13 @@ variable: test-number
 	= if Success raise else Failure raise endif
 ;
 
--- testing infrstructure and exception handling
+-- testing exception handling infrastructure
+-- ...can tests fail?
 : test-test  39  ;
 ' test-test    handles Failure
 ' test-failure handles Success
 0 1 test    39 <> if TestError raise endif
+-- ...and can they succeed
 ' test-failure handles Failure
 ' test-success handles Success
 1 1 test  -- succeeds
@@ -41,13 +43,16 @@ false                0 test
 -1  0 >            false test
  4  0 >             true test
  1 17 >=           false test
-17 17 >=           true test
- 1  1 <=             true test
+17 17 >=            true test
+ 1  1 <=            true test
 
-10  5 15 btw?       true test
-4   5 15 btw?      false test
+ 10   5 15 btw?       true test
+  4   5 15 btw?      false test
+-10 -15 -1 btw?       true test
+-10  -5  5 btw?      false test
+  1 -10 10 btw?       true test
 
-9 9  matches?      true test   9 test
+9  9 matches?      true test   9 test
 7 -1 matches?     false test   7 test
 ds-depth    0   test
 
@@ -62,6 +67,7 @@ ds-depth    0   test
  5 2 /mod    1 test   2 test
 -5 2 /mod   -1 test  -2 test
 5 2 /        2 test
+ 5 2 /modu   1 test   2 test
 
 18 1+    19 test
 18 1-    17 test
@@ -71,9 +77,13 @@ ds-depth    0   test
 
  17 10 max   17 test
 -17 10 max   10 test
+ 17 10 umax  17 test
+-17 10 umax -17 test
 
  17 10 min   10 test
 -17 10 min  -17 test
+ 17 10 umin  10 test
+-17 10 umin  10 test
 
 
 -- Stack shuffling
@@ -158,9 +168,10 @@ true  if -17 else 10 endif  -17 test
 s" hello world"          lens  11 test
 s" this is cantilever\n" lens  19 test
 s" embedded \"quotes\""  lens  17 test
-s" embeeded \0 null"     lens  15 test
+s" embedded \0 null"     lens  15 test
 s" blah" s" wiffle" s=      false test
 s" blah" s" blah"   s=       true test
+s" blah" s" blah\0" s=      false test
 
 -- Final test-harness sanity check
 ds-depth    0   test ;

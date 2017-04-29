@@ -110,8 +110,15 @@ str_text_\label:
 
 # Code macros ########################################
 
+### On AMD C-70, cantilever-stress-test financial data prog
+###       lodsl: 2m24.610s, 3 bytes
+###   mov + lea: 2m04.420s, 7 bytes
+###   mov + add: 1m59.860s, 7 bytes
 .macro next
-	lodsl
+	#lodsl
+	mov (%esi), %eax
+	#lea CELL_SIZE(%esi), %esi
+	add $CELL_SIZE, %esi
 	jmp *(%eax)
 	.align CELL_SIZE
 .endm
@@ -125,9 +132,18 @@ str_text_\label:
 	inc \reg
 .endm
 
+# cantilever-stress-test prog on AMD C-70
+#    lea + mov: 1m59.860s
+#    sub + mov: 2m07.530s
+#    add + mov: 2m1.920s
+#    xchg + push + xchg: 2m4.420s
 .macro pushrs reg
 	lea -CELL_SIZE(%ebp), %ebp
+	#add $(-CELL_SIZE), %ebp
 	movl \reg, (%ebp)
+	#xchg %ebp, %esp
+	#push \reg
+	#xchg %ebp, %esp
 .endm
 
 .macro poprs, reg
@@ -310,6 +326,10 @@ _eof_wrap:
 # codewords ##########################################
 
 .align CELL_SIZE
+# cantilever-stress-test prog on AMD C-70
+#    pushrs (lea + mov): 1m59.860s
+#             sub + mov:
+#    xchg + push + xchg
 do:
 TRACE_CODE
 	pushrs %esi  // save return address
@@ -852,7 +872,7 @@ next
 prim align // addr -- addr
 	// align to cell boundary
 	pop %eax
-	add $3, %eax
+	add $(CELL_SIZE-1), %eax
 	andb $0xfc, %al
 	push %eax
 next
@@ -877,8 +897,8 @@ next
 
 prim data
 	mov (%esi), %eax
-	lea 4(%esi), %edx
-	lea 4(%esi, %eax), %esi
+	lea CELL_SIZE(%esi), %edx
+	lea CELL_SIZE(%esi, %eax), %esi
 	push %edx
 next
 
@@ -900,12 +920,12 @@ next
 
 prim tailcall, "tail:"
 	mov (%esi), %esi
-	lea 4(%esi), %esi
+	lea CELL_SIZE(%esi), %esi
 next
 
 prim tailcallTOS, "tailcall-tos"
 	pop %esi
-	lea 4(%esi), %esi
+	lea CELL_SIZE(%esi), %esi
 next
 
 prim call
@@ -913,31 +933,45 @@ prim call
 	jmp *(%eax)
 next
 
-prim select "?"
-	xor %edx, %edx
-	xor %ecx, %ecx
-	mov 8(%esp), %eax  # cond
-	test %eax, %eax
-	setnz %dl
-	setz %cl
-	dec %edx
-	dec %ecx
-	and (%esp), %edx  # else
-	and 4(%esp), %ecx # then
-	addl %ecx, %edx
-	lea 8(%esp), %esp
-	mov %edx, (%esp)
-next
+# prim select "?"
+# 	xor %edx, %edx
+# 	xor %ecx, %ecx
+# 	mov 8(%esp), %eax  # cond
+# 	test %eax, %eax
+# 	setnz %dl
+# 	setz %cl
+# 	dec %edx
+# 	dec %ecx
+# 	and (%esp), %edx  # else
+# 	and 4(%esp), %ecx # then
+# 	addl %ecx, %edx
+# 	lea 8(%esp), %esp
+# 	mov %edx, (%esp)
+# next
 
 # Numeric literals ###################################
 
+# cantilever-stress-test on C-70
+#     lodsl push   : 2m11.740s, 2 bytes
+#     push add     : 2m05.070s, 5 bytes
+#     mov add push : 2m04.340s, 6 bytes
 prim lit
-	lodsl
+	#lodsl
+	#push %eax
+	# push (%esi)
+	# add $CELL_SIZE, %esi
+	mov (%esi), %eax
+	add $CELL_SIZE, %esi
 	push %eax
 next
 # we give this a different name to make code easier to read
 prim quote, "'"
-	lodsl
+	#lodsl
+	#push %eax
+	# push (%esi)
+	# add $CELL_SIZE, %esi
+	mov (%esi), %eax
+	add $CELL_SIZE, %esi
 	push %eax
 next
 

@@ -432,7 +432,7 @@ variable: tz
 
 : dip  ( S x q -- T x )    swap push call pop ;
 : bi   ( x y q -- x' y' )  stash dip pop call ;  -- apply q to x and y
-: ifte  ( S bool then else -- T ) ? call ;
+-- : ifte  ( S bool then else -- T ) ? call ;
 
 : i  1 $$ @ ;
 : _for
