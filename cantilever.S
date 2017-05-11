@@ -124,7 +124,7 @@ str_text_\label:
 .endm
 
 .macro end
-	.long return
+	.long endcol
 .endm
 
 .macro string_len_in_cells reg
@@ -891,6 +891,9 @@ next
 
 # Flow control #######################################
 
+prim endcol
+	poprs %esi
+next
 prim return
 	poprs %esi
 next
@@ -1323,11 +1326,13 @@ word initialiseVM
 1:
 	.long welcome
 .long tailcall, reset
+end
 
 word reset
 	.long rs0, get, rspSet 
 	.long interpreter, get
 .long tailcallTOS
+end
 
 # word initCommandlineFlags, "init-commandline-flags"
 #	.long quote, singleStepper, lit, 'S', flag
@@ -1349,6 +1354,7 @@ word handleNextArg, "handle-next-arg"
 	.long drop, stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
 .long tailcall, reset
+end
 word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
@@ -1425,7 +1431,7 @@ word error
 	.long clearInputBuffer, reset
 1:
 .long one, exit
-
+end
 
 # Numeric Output #######################################
 
@@ -1691,6 +1697,7 @@ word notFoundHandler "not-found-handler"  # str
 	.long WarningColour, colour
 	.long puts, NoColour, colour, NotFound, puts, nl
 .long error
+end
 
 word find // str -- xt behav
 	.long push  # save str
@@ -1844,11 +1851,12 @@ word colon, ":", call
 	.long createWord
 end
 word semicolon, ";", call
-	.long quote, return, storeinc
+	.long quote, endcol, storeinc
 	.long here, isAnonymous, zbranch, JUMP(1f)
 	.long anonCodeAreaAddr, get, call
 1:
 .long tailcall, useAnon
+end
 
 word useDict, "use-dict"
 	.long here, isAnonymous, zbranch, JUMP(1f)
@@ -1862,6 +1870,7 @@ word useAnon, "use-anon"
 	.long anonCodeAreaAddr, get, dpSet
 	.long DoAddr, storeinc
 .long tailcall, prompt
+end
 
 word welcome
 	.long inChannel, get, isATTY, zbranch, JUMP(1f)

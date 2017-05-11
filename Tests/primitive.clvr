@@ -173,6 +173,22 @@ s" blah" s" wiffle" s=      false test
 s" blah" s" blah"   s=       true test
 s" blah" s" blah\0" s=      false test
 
+-- return functions
+
+-- An inliner requires that endcol is always 
+--    the terminator of a word's definition, 
+--    and never occurs in the middle, which 
+--    is why we have return as well.
+
+: endcol-test return 0 -> ;; ;
+--  0 |      1 | 2 |      3 |       4 |    5 |  6 | 7 |
+-- xt | return | 0 | match? | zbranch | offs | ;; | ; |
+' endcol-test  1 cell after @  ' return  test
+' endcol-test  6 cell after @  ' return  test
+' endcol-test  7 cell after @  ' endcol  test
+
+
+
 -- Final test-harness sanity check
 ds-depth    0   test ;
 

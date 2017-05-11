@@ -487,7 +487,7 @@ variable: tz
 	-- switch to a temporary dictionary for locals
 	here   local-dict dp!
 	-- override the defition of ;
-	' ` ; .cfa->.label keeps   defword ' end-local-scope , ' return , ` #immediate
+	' ` ; .cfa->.label keeps   defword ' end-local-scope , ' endcol , ` #immediate
 	-- a count of our temp vars...
 	0
 	-- pile them on the stack. We need to reverse the
