@@ -191,7 +191,7 @@ _start:
 	cld
 	mov (%esp), %eax
 	mov %eax, var_argc
-	lea 4(%esp), %eax
+	lea CELL_SIZE(%esp), %eax
 	mov %eax, var_argv
 	mov %eax, var_argv0
 	push $0
@@ -333,18 +333,18 @@ _eof_wrap:
 do:
 TRACE_CODE
 	pushrs %esi  // save return address
-	lea 4(%eax), %esi
+	lea CELL_SIZE(%eax), %esi
 next
 
 .align CELL_SIZE
 doconst:
-	push 4(%eax)
+	push CELL_SIZE(%eax)
 TRACE_CODE
 next
 
 .align CELL_SIZE
 dovar:
-	lea 4(%eax), %edx
+	lea CELL_SIZE(%eax), %edx
 	push %edx
 TRACE_CODE
 next
@@ -364,8 +364,8 @@ next
 .align CELL_SIZE
 dodoes:
 	pushrs %esi
-	lea 8(%eax), %edx
-	mov 4(%eax), %esi
+	lea (2*CELL_SIZE)(%eax), %edx
+	mov CELL_SIZE(%eax), %esi
 	push %edx
 next
 
@@ -762,6 +762,26 @@ prim trash
 	poprs %eax
 next
 
+prim wlen  #  xt -- n-cells
+	# -1 means a primitive or other non-inlinable word
+	# otherwise returns the length in cells of the word
+	mov $-1, %ecx
+	mov %esi, %edx
+	pop %esi
+	lodsl
+	cmpl $do, %eax
+	jne 2f
+	mov $endcol, %eax
+	xchg %esi, %edi
+	repne scasl
+	xchg %esi, %edi
+	not %ecx
+	dec %ecx
+2:
+	mov %edx, %esi
+	push %ecx
+next
+
 prim frame
 	pushrs %ebx
 	mov %ebp, %ebx
@@ -774,7 +794,7 @@ prim local, "$$"  # n -- addr
 	# get cell n of current frame
 	pop %eax
 	not %eax
-	lea (%ebx, %eax, 4), %edx
+	lea (%ebx, %eax, CELL_SIZE), %edx
 	push %edx
 next
 prim locals  # n -- 
@@ -825,7 +845,7 @@ next
 
 prim getStep "@+"  # addr -- addr' n
 	mov (%esp), %eax
-	addl $4, (%esp)
+	addl $CELL_SIZE, (%esp)
 	push (%eax)
 next
 
@@ -1133,7 +1153,7 @@ _choose_handler:
 	ja _num_err
 	mov $number_char_class, %ecx
 	movzbl (%ecx, %edx), %ecx
-	mov (%ebx, %ecx, 4), %ecx
+	mov (%ebx, %ecx, CELL_SIZE), %ecx
 	jmp *%ecx
 
 .align CELL_SIZE
@@ -1217,7 +1237,7 @@ _month:
 	sub %edx, (%esp)  # we count years from 1st March, so yr-1 for jan or feb
 	dec %eax     # month->index (0-11)
 	mov $month_table, %ecx
-	mov (%ecx, %eax, 4), %eax   # days to start of month
+	mov (%ecx, %eax, CELL_SIZE), %eax   # days to start of month
 	push %eax
 	xor %eax, %eax
 	xor %edx, %edx

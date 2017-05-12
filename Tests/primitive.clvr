@@ -181,12 +181,16 @@ s" blah" s" blah\0" s=      false test
 --    is why we have return as well.
 
 : endcol-test return 0 -> ;; ;
+: nop ;
 --  0 |      1 | 2 |      3 |       4 |    5 |  6 | 7 |
 -- xt | return | 0 | match? | zbranch | offs | ;; | ; |
-' endcol-test  1 cell after @  ' return  test
-' endcol-test  6 cell after @  ' return  test
-' endcol-test  7 cell after @  ' endcol  test
+' endcol-test  1 cell after @  ' return test
+' endcol-test  6 cell after @  ' return test
+' endcol-test  7 cell after @  ' endcol test
 
+' push        wlen  -1 test
+' nop         wlen   0 test
+' endcol-test wlen   6 test
 
 
 -- Final test-harness sanity check
