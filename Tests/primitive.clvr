@@ -173,6 +173,12 @@ s" blah" s" wiffle" s=      false test
 s" blah" s" blah"   s=       true test
 s" blah" s" blah\0" s=      false test
 
+-- null-terminated strings
+s" hello world"           s->z lenz  11 test
+s" this is cantilever\n"  s->z lenz  19 test
+s" embedded \"quotes\""   s->z lenz  17 test
+s" embedded \0 null"      s->z lenz   9 test  -- ends at embedded \0
+
 -- return functions
 
 -- An inliner requires that endcol is always 
