@@ -878,12 +878,16 @@ next
 
 prim storeinc, ","
 	pop %eax
-	stosl
+	#stosl
+	mov %eax, (%edi)
+	lea 4(%edi), %edi
 next
 
 prim storebinc, ",b"
 	pop %eax
-	stosb
+	#stosb
+	mov %eax, (%edi)
+	inc %edi
 next
 
 prim cell
