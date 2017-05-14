@@ -23,15 +23,15 @@
 ' -    alias: before
 ' +    alias: after
 
-: next-cell  here   1 cell after   ;
-: prev-cell  here   1 cell before  ;
+: next-cell  here   1 cell after   ;  #inline
+: prev-cell  here   1 cell before  ;  #inline
 
 -- a couple more readability constants...
 -1 constant: true
 0  constant: false
 
 -- missing arithmetic
-: /  /mod drop  ;
+: /  /mod drop  ;  #inline
 
 -- Text highlighting
 : warning     WarningColour colour ;
@@ -77,8 +77,8 @@ variable: if-depth
   nested, and can span multiple lines ) )
 
 -- Get and Set with post-increment (@+ is now a prim)
-: !+  ( x addr -- addr' )   stash !   pop 1 cell after   ;
-: !-  ( x addr -- addr' )   stash !   pop 1 cell before  ;
+: !+  ( x addr -- addr' )   stash !   pop 1 cell after   ;   #inline
+: !-  ( x addr -- addr' )   stash !   pop 1 cell before  ;   #inline
 -- : @+  ( addr -- addr' x )   stash 1 cell after   pop @   ;
 
 
@@ -430,7 +430,7 @@ variable: tz
 
 -- Concatenative style combinators
 
-: dip  ( S x q -- T x )    swap push call pop ;
+: dip  ( S x q -- T x )    swap push call pop ;   #inline
 : bi   ( x y q -- x' y' )  stash dip pop call ;  -- apply q to x and y
 -- : ifte  ( S bool then else -- T ) ? call ;
 
@@ -533,6 +533,14 @@ variable: tz
 	` cells:
 ;
 : end-struct  ` ; swap ! ;  #immediate  -- save the struct size
+
+-- conditional inlining
+variable: use-inliner
+: ?inline  #immediate
+	use-inliner @ if
+		` #inline
+	endif
+;
 
 
 -- Allow us to run cantilever scripts on unix...

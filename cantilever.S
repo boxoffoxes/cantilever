@@ -149,10 +149,11 @@ str_text_\label:
 .macro poprs, reg
 	mov (%ebp), \reg
 	lea CELL_SIZE(%ebp), %ebp
+	#add $CELL_SIZE, %ebp
 .endm
 
 .macro align_dp
-	add $3, %edi
+	add $(CELL_SIZE-1), %edi
 	and $0xfffffffc, %edi
 .endm
 
@@ -765,17 +766,6 @@ next
 prim wlen  #  addr -- n-cells
 	# -1 means a primitive or other non-inlinable word
 	# otherwise returns the length in cells of the word
-	mov %edi, %edx
-	mov $-1, %ecx
-	pop %edi
-	mov $endcol, %eax
-	repne scasl
-	not %ecx
-	mov %edx, %edi
-	dec %ecx
-	push %ecx
-next
-
 	mov $-1, %ecx
 	mov %esi, %edx
 	pop %esi
@@ -941,7 +931,9 @@ prim branch
 next
 
 prim zbranch 
-	lodsl                  # distance to branch
+	mov (%esi), %eax
+	#lodsl                  # distance to branch
+	add $CELL_SIZE, %esi
 	pop %edx               # boolean to test
 	xor %ecx, %ecx
 	sub $CELL_SIZE, %eax   # because lodsl incremented %esi
@@ -968,6 +960,10 @@ prim call
 next
 
 prim inline
+	# TODO: this logic belongs in quote, not inline!
+	mov -4(%edi), %eax
+	cmp $quote, %eax
+	je prim_storeinc  # don't inline quoted words!
 	pop %eax
 	mov %esi, %edx
 	lea 4(%eax), %esi
