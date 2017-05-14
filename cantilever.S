@@ -762,9 +762,20 @@ prim trash
 	poprs %eax
 next
 
-prim wlen  #  xt -- n-cells
+prim wlen  #  addr -- n-cells
 	# -1 means a primitive or other non-inlinable word
 	# otherwise returns the length in cells of the word
+	mov %edi, %edx
+	mov $-1, %ecx
+	pop %edi
+	mov $endcol, %eax
+	repne scasl
+	not %ecx
+	mov %edx, %edi
+	dec %ecx
+	push %ecx
+next
+
 	mov $-1, %ecx
 	mov %esi, %edx
 	pop %esi
@@ -954,6 +965,20 @@ next
 prim call
 	pop %eax
 	jmp *(%eax)
+next
+
+prim inline
+	pop %eax
+	mov %esi, %edx
+	lea 4(%eax), %esi
+1:
+	lodsl
+	cmp $endcol, %eax
+	je 2f
+	stosl
+	jmp 1b
+2:
+	mov %edx, %esi
 next
 
 # prim select "?"
@@ -1859,6 +1884,9 @@ word createWord, "create-word"
 end
 word immed, "#immediate", call
 	.long dictionary, get, bfa, quote, call, swap, set
+end
+word hashinline, "#inline", call
+	.long dictionary, get, bfa, quote, inline, swap, set
 end
 
 word constantColon, "constant:", call

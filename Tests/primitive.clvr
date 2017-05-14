@@ -188,15 +188,34 @@ s" embedded \0 null"      s->z lenz   9 test  -- ends at embedded \0
 
 : endcol-test return 0 -> ;; ;
 : nop ;
---  0 |      1 | 2 |      3 |       4 |    5 |  6 | 7 |
+--  1 |      2 | 3 |      4 |       5 |    6 |  7 | 8 |
 -- xt | return | 0 | match? | zbranch | offs | ;; | ; |
 ' endcol-test  1 cell after @  ' return test
 ' endcol-test  6 cell after @  ' return test
 ' endcol-test  7 cell after @  ' endcol test
 
-' push        wlen  -1 test
-' nop         wlen   0 test
-' endcol-test wlen   6 test
+' nop         wlen   1 test
+' endcol-test wlen   7 test
+
+#inline  -- applies to nop
+: inl-test 1 1 + ; #inline
+: ifun1 inl-test ;
+: ifun2 inl-test nop ;
+: ifun3 3 inl-test nop 1 + + ;
+: ifun4 if 2 else 7 endif ;
+
+ifun1          2 test
+ifun2          2 test
+ifun3          6 test
+true ifun4     2 test
+false ifun4    7 test
+#inline
+true ifun4     2 test
+false ifun4    7 test
+: ifun5 ifun4 1+ ;
+true ifun5     3 test
+false ifun5    8 test
+
 
 
 -- Final test-harness sanity check
