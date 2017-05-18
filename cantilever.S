@@ -110,14 +110,8 @@ str_text_\label:
 
 # Code macros ########################################
 
-### On AMD C-70, cantilever-stress-test financial data prog
-###       lodsl: 2m24.610s, 3 bytes
-###   mov + lea: 2m04.420s, 7 bytes
-###   mov + add: 1m59.860s, 7 bytes
 .macro next
-	#lodsl
 	mov (%esi), %eax
-	#lea CELL_SIZE(%esi), %esi
 	add $CELL_SIZE, %esi
 	jmp *(%eax)
 	.align CELL_SIZE
@@ -132,24 +126,14 @@ str_text_\label:
 	inc \reg
 .endm
 
-# cantilever-stress-test prog on AMD C-70
-#    lea + mov: 1m59.860s
-#    sub + mov: 2m07.530s
-#    add + mov: 2m1.920s
-#    xchg + push + xchg: 2m4.420s
 .macro pushrs reg
 	lea -CELL_SIZE(%ebp), %ebp
-	#add $(-CELL_SIZE), %ebp
 	movl \reg, (%ebp)
-	#xchg %ebp, %esp
-	#push \reg
-	#xchg %ebp, %esp
 .endm
 
 .macro poprs, reg
 	mov (%ebp), \reg
 	lea CELL_SIZE(%ebp), %ebp
-	#add $CELL_SIZE, %ebp
 .endm
 
 .macro align_dp
@@ -326,10 +310,6 @@ _eof_wrap:
 # codewords ##########################################
 
 .align CELL_SIZE
-# cantilever-stress-test prog on AMD C-70
-#    pushrs (lea + mov): 1m59.860s
-#             sub + mov:
-#    xchg + push + xchg
 do:
 TRACE_CODE
 	pushrs %esi  // save return address
@@ -986,25 +966,13 @@ next
 
 # Numeric literals ###################################
 
-# cantilever-stress-test on C-70
-#     lodsl push   : 2m11.740s, 2 bytes
-#     push add     : 2m05.070s, 5 bytes
-#     mov add push : 2m04.340s, 6 bytes
 prim lit
-	#lodsl
-	#push %eax
-	# push (%esi)
-	# add $CELL_SIZE, %esi
 	push %ebx
 	mov (%esi), %ebx
 	add $CELL_SIZE, %esi
 next
 # we give this a different name to make code easier to read
 prim quote, "'"
-	#lodsl
-	#push %eax
-	# push (%esi)
-	# add $CELL_SIZE, %esi
 	push %ebx
 	mov (%esi), %ebx
 	add $CELL_SIZE, %esi
