@@ -195,7 +195,7 @@ _start:
 	lea CELL_SIZE(%esp), %eax
 	mov %eax, var_argv
 	mov %eax, var_argv0
-	push $0
+	mov $0xd50d50, %ebx
 	mov %esp, var_ds0
 	mov %esp, %ebp
 	sub $DS_SIZE, %ebp
@@ -207,7 +207,7 @@ next
 
 .align CELL_SIZE
 _fill_buffer:
-	push %ebx
+	# %ebx has been preserved before we were called
 	mov $__NR_read, %eax
 	mov var_inChannel, %ebx
 	mov var_ioBuffer, %ecx
@@ -218,26 +218,25 @@ _fill_buffer:
 	jbe _eof
 	add %eax, %ecx
 	mov %ecx, var_bufend
-	pop %ebx
 	// fallthrough
 .align CELL_SIZE
-_key:
+_key:  # leaves result on ToS
 	mov var_bufpos, %edx
 	cmp var_bufend, %edx
 	jae _fill_buffer
-	movzbl (%edx), %eax
+	movzbl (%edx), %ebx
 	inc %edx
 	mov %edx, var_bufpos
 ret
 
 .align CELL_SIZE
 _eof:
-	pop %ebx  # we're called from fill-buffer, which preserves %ebx
 	mov var_ioBuffer, %eax
 	mov %eax, var_bufend
 	mov %eax, var_bufpos
-	pop %eax   # _key return addr
+	pop %eax   # _key return addr (we're using regular CPU call-ret)
 	pop %eax   # _word return addr
+	pop %eax   # the function that called _key or _word had already pushed %ebx
 	mov $_eof_wrap, %esi
 next
 
@@ -276,19 +275,19 @@ ret
 _word:  // copy the next word into wordbuffer
 	// skip whitespace
 	call _key
-	cmpb $' ', %al
+	cmpb $' ', %bl
 	jbe _word 
 	// copy word
 	mov $wordbuffer_text, %edx
 1:
-	movb %al, (%edx)
+	movb %bl, (%edx)
 	inc %edx
 	cmpl $end_wordbuffer, %edx
 	jae 2f // buffer overflow!
 	pushrs %edx  // save our pointer
 	call _key
 	poprs %edx   // ...and restore it
-	cmpb $' ', %al
+	cmpb $' ', %bl
 	ja 1b
 	movl $0, CELL_SIZE(%edx)  // add two words of nulls after word
 	//mov $0, 8(%edx)
@@ -297,11 +296,11 @@ _word:  // copy the next word into wordbuffer
 	sub $wordbuffer_text, %edx
 	mov %edx, wordbuffer
 ret
-2:
+2:  # TODO: THIS MAY BE BORKED!
 	// TODO: should skip the rest of the long word too...
 	movl $0x202e2e2e, wordbuffer+12 // truncate the long word with "... "
 	movl $12, wordbuffer
-	movl $wordbuffer, (%esp)  // over-write our return address
+	movl $wordbuffer, (%ebp)  // over-write our return address
 	push $str_TooLong
 	# handle error. Was function, but used only here
 	mov $_error_wrap, %esi
@@ -339,14 +338,15 @@ next
 
 .align CELL_SIZE
 doconst:
-	push CELL_SIZE(%eax)
+	push %ebx
+	mov CELL_SIZE(%eax), %ebx
 TRACE_CODE
 next
 
 .align CELL_SIZE
 dovar:
-	lea CELL_SIZE(%eax), %edx
-	push %edx
+	push %ebx
+	lea CELL_SIZE(%eax), %ebx
 TRACE_CODE
 next
 
@@ -364,10 +364,10 @@ next
 #
 .align CELL_SIZE
 dodoes:
+	push %ebx
 	pushrs %esi
-	lea (2*CELL_SIZE)(%eax), %edx
+	lea (2*CELL_SIZE)(%eax), %ebx
 	mov CELL_SIZE(%eax), %esi
-	push %edx
 next
 
 # System calls #######################################
@@ -388,49 +388,41 @@ constant SysNanosleep, __NR_nanosleep
 
 # prims
 prim syscall0  # id -- result
-	pop %eax
+	mov %ebx, %eax
 	int $0x80
-	push %eax
+	mov %eax, %ebx
 next
 prim syscall1  # arg id -- result
-	pushrs %ebx
-	pop %eax
+	mov %ebx, %eax
 	pop %ebx
 	int $0x80
-	push %eax
-	poprs %ebx
+	mov %eax, %ebx
 next
 prim syscall2  # arg2 arg1 id -- result
-	pushrs %ebx
-	pop %eax
+	mov %ebx, %eax
 	pop %ebx
 	pop %ecx
 	int $0x80
-	push %eax
-	poprs %ebx
+	mov %eax, %ebx
 next
 prim syscall3  # arg3 arg2 arg1 id -- result
-	pushrs %ebx
-	pop %eax
+	mov %ebx, %eax
 	pop %ebx
 	pop %ecx
 	pop %edx
 	int $0x80
-	push %eax
-	poprs %ebx
+	mov %eax, %ebx
 next
 
 prim syscall6  # arg6 arg5 ... arg1 id -- result
 	# This is slightly different because for >5 args
 	# Linux expects args to be passed by pointer.
 	# In this case we simply use the stack
-	pushrs %ebx
-	pop %eax
+	mov %ebx, %eax
 	mov %esp, %ebx
 	int $0x80
 	add $(6*CELL_SIZE), %esp
-	push %eax
-	poprs %ebx
+	mov %eax, %ebx
 next
 
 # IO prims ###########################################
@@ -449,15 +441,16 @@ constant ReadOnly,   0
 constant WriteOnly,  01101
 constant ReadWrite,  02202
 
-prim key
+prim key   # -- c
+	push %ebx
 	call _key
-	push %eax
 next
 
 prim word  # -- str
+	push %ebx
 	call _word
 	// push the address of temporary buffer
-	push $wordbuffer
+	mov $wordbuffer, %ebx
 next
 
 # Logical and bitwise prims ##########################
@@ -467,120 +460,107 @@ constant false, 0
 
 prim match "matches?" # n1 n2 -- n1 bool
 	# semi-destructive equals for pattern matching
-	pop %eax
-	xor %ecx, %ecx
-	cmpl (%esp), %eax
-	setne %cl
-	dec %ecx
-	push %ecx
+	xor %eax, %eax
+	cmpl (%esp), %ebx
+	setne %al
+	dec %eax
+	mov %eax, %ebx
 next
 
 prim between "btw?"  # n lower upper -- bool
-	pop %edx  # upper
 	pop %ecx  # lower
 	pop %eax  # n
-	sub %ecx, %edx  # upper-lower
+	sub %ecx, %ebx  # upper-lower
 	sub %ecx, %eax  # n-lower
 	xor %ecx, %ecx  
-	cmp %edx, %eax
+	cmp %ebx, %eax
 	seta %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 
 prim eq, "=" // a b -- bool
 	pop %eax
-	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %eax, %ebx
 	setne %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 prim neq, "<>" // a b -- bool
 	pop %eax
-	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %eax, %ebx
 	sete %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 prim ge, ">="
-	pop %eax
 	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %ebx, %edx
 	setl %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 prim gt, ">"
-	pop %eax
 	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %ebx, %edx
 	setle %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 prim le, "<="
-	pop %eax
 	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %ebx, %edx
 	setg %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 prim lt, "<"
 	pop %eax
-	pop %edx
 	xor %ecx, %ecx
-	cmpl %eax, %edx
+	cmpl %ebx, %eax
 	setge %cl
 	dec %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 
 prim and
 	pop %eax
-	and %eax, (%esp)
+	and %eax, %ebx
 next
 prim or
 	pop %eax
-	or %eax, (%esp)
+	or %eax, %ebx
 next
 prim xor
 	pop %eax
-	xor %eax, (%esp)
+	xor %eax, %ebx
 next
 prim not
-	pop %eax
-	not %eax
-	push %eax
+	not %ebx
 next
 
 prim bool
-	pop %eax
-	xor %edx, %edx
-	test %eax, %eax
-	setz %dl
-	dec %edx
-	push %edx
+	xor %eax, %eax
+	test %ebx, %ebx
+	setz %al
+	dec %eax
+	mov %eax, %ebx
 next
 
 prim lshift, "shift-up" // int n -- int
-	pop %ecx
-	pop %eax
-	shl %cl, %eax
-	push %eax
+	mov %ebx, %ecx
+	pop %ebx
+	shl %cl, %ebx
 next
 prim rshift, "shift-down" // int n -- int
-	pop %ecx
-	pop %eax
-	sar %cl, %eax
-	push %eax
+	mov %ebx, %ecx
+	pop %ebx
+	sar %cl, %ebx
 next
 
 # Arithmetic prims ###################################
@@ -591,98 +571,91 @@ constant minus_one, -1 "-1"
 
 prim mul, "*"  // int int -- int
 	pop %eax
-	imull (%esp)
-	mov %eax, (%esp)
+	imull %ebx
+	mov %eax, %ebx
 	// TODO: check for overflow
 next
 
 prim mulDiv, "*/" // int int int -- int
-	pop %ecx
+	mov %ebx, %ecx
 	pop %eax
 	imull (%esp)
 	idiv %ecx
-	mov %eax, (%esp)
+	mov %eax, %ebx
 next
 
 prim udivmod, "/modu" # int int -- int int
-	pushrs %ebx
-	pop %ebx
 	pop %eax
 	xor %edx, %edx
 	divl %ebx
+	mov %edx, %ebx
 	push %eax
-	push %edx
-	poprs %ebx
 next
 prim divmod  "/mod" # int int -- int int
-	pushrs %ebx
-	pop %ebx
 	pop %eax
 	cdq  // sign-extend %eax into %edx
 	idivl %ebx
+	mov %edx, %ebx
 	push %eax
-	push %edx
-	poprs %ebx
 next
 
 prim sub, "-" // int int -- int
 	pop %eax
-	sub %eax, (%esp)
+	sub %ebx, %eax
+	mov %eax, %ebx
 next
 prim add, "+" // int int -- int
 	pop %eax
-	add %eax, (%esp)
+	add %eax, %ebx
 next
 
 prim neg
-	negl (%esp)
+	negl %ebx
 next
 
 prim inc, "1+"
-	incl (%esp)
+	incl %ebx
 next
 prim dec, "1-"
-	decl (%esp)
+	decl %ebx
 next
 
 prim double, "2*"
-	pop %eax
-	shl $1, %eax
-	push %eax
+	shl $1, %ebx
 next
 
 prim min // int int -- int
 	pop %eax
-	cmpl (%esp), %eax
-	jge 1f
-	mov %eax, (%esp)
+	cmpl %eax, %ebx
+	jl 1f
+	mov %eax, %ebx
 1:
 next
 prim max
 	pop %eax
-	cmpl (%esp), %eax
-	jle 1f
-	mov %eax, (%esp)
+	cmpl %eax, %ebx
+	jg 1f
+	mov %eax, %ebx
 1:
 next
 
 prim umin // uint uint -- uint
 	pop %eax
-	cmpl (%esp), %eax
-	jae 1f
-	mov %eax, (%esp)
+	cmpl %eax, %ebx
+	jb 1f
+	mov %eax, %ebx
 1:
 next
 prim umax
 	pop %eax
-	cmpl (%esp), %eax
-	jbe 1f
-	mov %eax, (%esp)
+	cmpl %eax, %ebx
+	ja 1f
+	mov %eax, %ebx
 1:
 next
 
 prim sumCells, "sum-cells"  # array count -- int
-	pop %ecx
+	mov %ebx, %ecx
 	pop %edx
 	xor %eax, %eax
 1:
@@ -691,73 +664,84 @@ prim sumCells, "sum-cells"  # array count -- int
 	add %edx, %eax
 	jmp 1b
 2:
+	mov %eax, %ebx
 next
 
 # Data Stack manipulation prims ######################
 
 prim dspGet, "dsp@"
-	push %esp
+	push %ebx
+	mov %esp, %ebx
 next
 prim dspSet, "dsp!"
-	pop %esp
+	mov %ebx, %esp
+	pop %ebx
 next
 prim dsDepth, "ds-depth"
-	mov var_ds0, %eax
-	sub %esp, %eax
-	sar $CELL_BITS, %eax
-	push %eax
+	push %ebx
+	mov var_ds0, %ebx
+	sub %esp, %ebx
+	sar $CELL_BITS, %ebx
+	dec %ebx  # because ToS is in a register
 next
 
 prim drop
-	pop %eax
+	pop %ebx
 next
 prim nip
-	pop %eax
-	pop %edx
-	push %eax
+	lea CELL_SIZE(%esp), %esp
 next
 prim swap  // a b -- b a
-	pop %eax
-	pop %edx
-	push %eax
-	push %edx
+	xchg %ebx, (%esp)
 next
+.data
+dupcount: .int 0
+
 prim dup
-	push (%esp)
+	incl dupcount
+	cmp var_ds0, %esp
+	jae crash
+	push %ebx
 next
+crash:
+	xor %eax, %eax
+	mov (%eax), %eax
 prim over
-	push CELL_SIZE(%esp)
+	push %ebx
+	mov CELL_SIZE(%esp), %ebx
 next
 
 # Return stack prims #################################
 
 prim rspGet, "rsp@"
-	push %ebp
+	push %ebx
+	mov %ebp, %ebx
 next
 prim rspSet, "rsp!"
-	pop %ebp
+	mov %ebx, %ebp
+	pop %ebx
 next
 prim rsDepth, "rs-depth"
-	mov var_rs0, %eax
-	sub %ebp, %eax
-	sar $CELL_BITS, %eax
-	push %eax
+	push %ebx
+	mov var_rs0, %ebx
+	sub %ebp, %ebx
+	sar $CELL_BITS, %ebx
 next
 
 prim push
-	pop %eax
-	pushrs %eax
+	pushrs %ebx
+	pop %ebx
 next
 prim peek
-	push (%ebp)
+	push %ebx
+	mov (%ebp), %ebx
 next
 prim pop
-	poprs %eax
-	push %eax
+	push %ebx
+	poprs %ebx
 next
 prim stash
-	mov (%esp), %eax
-	pushrs %eax
+	pushrs %ebx
 next
 prim trash
 	poprs %eax
@@ -768,7 +752,7 @@ prim wlen  #  addr -- n-cells
 	# otherwise returns the length in cells of the word
 	mov $-1, %ecx
 	mov %esi, %edx
-	pop %esi
+	mov %ebx, %esi
 	lodsl
 	cmpl $do, %eax
 	jne 2f
@@ -780,29 +764,33 @@ prim wlen  #  addr -- n-cells
 	dec %ecx
 2:
 	mov %edx, %esi
-	push %ecx
+	mov %ecx, %ebx
 next
 
+variable curframe
 prim frame
-	pushrs %ebx
-	mov %ebp, %ebx
+	mov curframe, %eax
+	pushrs %eax
+	mov %ebp, curframe
 next
 prim unframe
-	mov %ebx, %ebp
-	poprs %ebx
+	mov curframe, %ebp
+	poprs %eax
+	mov %eax, curframe
 next
 prim local, "$$"  # n -- addr
 	# get cell n of current frame
-	pop %eax
-	not %eax
-	lea (%ebx, %eax, CELL_SIZE), %edx
-	push %edx
+	not %ebx
+	mov curframe, %eax
+	lea (%eax, %ebx, CELL_SIZE), %edx
+	mov %edx, %ebx
 next
 prim locals  # n -- 
 	# create a frame with n local variables
-	pushrs %ebx
-	mov %ebp, %ebx
-	pop %ecx
+	mov curframe, %eax
+	pushrs %eax
+	mov %ebp, curframe
+	mov %ebx, %ecx
 1:
 	test %ecx, %ecx
 	jz 2f
@@ -812,14 +800,15 @@ prim locals  # n --
 	jmp 1b
 2:
 	pushrs $do_unframe
+	pop %ebx
 next
 prim incVar "inc-var"
-	pop %eax
-	incl (%eax)
+	incl (%ebx)
+	pop %ebx
 next
 prim decVar "dec-var"
-	pop %eax
-	decl (%eax)
+	decl (%ebx)
+	pop %ebx
 next
 
 do_unframe:
@@ -828,48 +817,49 @@ do_unframe:
 # Instruction pointer ################################
 
 prim ipGet, "ip@"
-	push %esi
+	push %ebx
+	mov %esi, %ebx
 next
 
 # Memory access ######################################
 
 prim get, "@"
-	pop %eax
-	push (%eax)
+	mov (%ebx), %ebx
 next
 prim getByte, "@b"
-	xor %eax, %eax
-	pop %edx
-	mov (%edx), %al
-	push %eax
+	movzbl (%ebx), %ebx
 next
 
 prim getStep "@+"  # addr -- addr' n
-	mov (%esp), %eax
-	addl $CELL_SIZE, (%esp)
-	push (%eax)
+	mov (%ebx), %eax
+	addl $CELL_SIZE, %ebx
+	push %ebx
+	mov %eax, %ebx
 next
 
 prim set "!" # int addr -- 
 	pop %eax
-	pop %edx
-	mov %edx, (%eax)
+	mov %eax, (%ebx)
+	pop %ebx
 next
 prim setByte "!b" # int addr -- 
-	pop %eax
 	pop %edx
-	mov %dl, (%eax)
+	mov %dl, (%ebx)
+	pop %ebx
 next
 
 prim dpGet, "dp@"
-	push %edi
+	push %ebx
+	mov %edi, %ebx
 next
 prim dpSet, "dp!"
-	pop %edi
+	mov %ebx, %edi
+	pop %ebx
 next
 
 prim here
-	push %edi
+	push %ebx
+	mov %edi, %ebx
 next
 
 prim dpAlign, "align-dp"
@@ -877,41 +867,36 @@ prim dpAlign, "align-dp"
 next
 
 prim storeinc, ","
-	pop %eax
-	#stosl
-	mov %eax, (%edi)
+	mov %ebx, (%edi)
 	lea 4(%edi), %edi
+	pop %ebx
 next
 
 prim storebinc, ",b"
-	pop %eax
-	#stosb
-	mov %eax, (%edi)
+	mov %bl, (%edi)
 	inc %edi
+	pop %ebx
 next
 
 prim cell
-	shll $CELL_BITS, (%esp)
+	shll $CELL_BITS, %ebx
 next
 
 prim align // addr -- addr
 	// align to cell boundary
-	pop %eax
-	add $(CELL_SIZE-1), %eax
-	andb $0xfc, %al
-	push %eax
+	add $(CELL_SIZE-1), %ebx
+	andb $0xfc, %bl
 next
 
 prim isAnonymous "is-anon?" # addr -- bool
 	# is addr in the anonymous area?
 	mov var_anonCodeAreaAddr, %edx
-	pop %eax
-	sub %edx, %eax
+	sub %edx, %ebx
 	xor %edx, %edx
-	cmp $SCRATCH_SIZE, %eax
+	cmp $SCRATCH_SIZE, %ebx
 	seta %dl
 	dec %edx
-	push %edx
+	mov %edx, %ebx
 next
 
 # Flow control #######################################
@@ -923,26 +908,26 @@ prim return
 	poprs %esi
 next
 
-prim data
+prim data  # -- addr
+	push %ebx
 	mov (%esi), %eax
-	lea CELL_SIZE(%esi), %edx
+	lea CELL_SIZE(%esi), %ebx
 	lea CELL_SIZE(%esi, %eax), %esi
-	push %edx
 next
 
 prim branch
 	add (%esi), %esi
 next
 
-prim zbranch 
+prim zbranch   #  bool -- 
 	mov (%esi), %eax
 	#lodsl                  # distance to branch
 	add $CELL_SIZE, %esi
-	pop %edx               # boolean to test
 	xor %ecx, %ecx
 	sub $CELL_SIZE, %eax   # because lodsl incremented %esi
-	test %edx, %edx        # bool is zero?
+	test %ebx, %ebx        # bool is zero?
 	setnz %cl
+	pop %ebx
 	dec %ecx
 	and %ecx, %eax         # %ecx is 0 if %edx is non-zero
 	add %eax, %esi
@@ -954,21 +939,23 @@ prim tailcall, "tail:"
 next
 
 prim tailcallTOS, "tailcall-tos"
-	pop %esi
-	lea CELL_SIZE(%esi), %esi
+	lea CELL_SIZE(%ebx), %esi
+	pop %ebx
 next
 
-prim call
-	pop %eax
+prim call  # xt --
+	mov %ebx, %eax
+	pop %ebx
 	jmp *(%eax)
 next
 
-prim inline
+prim inline   # xt --
 	# TODO: this logic belongs in quote, not inline!
 	mov -4(%edi), %eax
 	cmp $quote, %eax
 	je prim_storeinc  # don't inline quoted words!
-	pop %eax
+	mov %ebx, %eax
+	pop %ebx
 	mov %esi, %edx
 	lea 4(%eax), %esi
 1:
@@ -1008,9 +995,9 @@ prim lit
 	#push %eax
 	# push (%esi)
 	# add $CELL_SIZE, %esi
-	mov (%esi), %eax
+	push %ebx
+	mov (%esi), %ebx
 	add $CELL_SIZE, %esi
-	push %eax
 next
 # we give this a different name to make code easier to read
 prim quote, "'"
@@ -1018,51 +1005,52 @@ prim quote, "'"
 	#push %eax
 	# push (%esi)
 	# add $CELL_SIZE, %esi
-	mov (%esi), %eax
+	push %ebx
+	mov (%esi), %ebx
 	add $CELL_SIZE, %esi
-	push %eax
 next
 
 # Memory copying prims ###############################
 
 prim copyBytes, "copy-bytes"  # from nbytes to --
-	mov %edi, %edx  # save DP
+	xchg %edi, %ebx  # save DP
 	pushrs %esi      # save IP
-	pop %edi
 	pop %ecx
 	pop %esi
 	rep movsb
 	poprs %esi
-	mov %edx, %edi
+	mov %ebx, %edi
+	pop %ebx
 next
 prim copy, "copy" # from ncells to --
-	mov %edi, %edx # save DP
+	xchg %edi, %ebx # save DP
 	pushrs %esi
 	pop %edi
 	pop %ecx
 	pop %esi
 	rep movsl
 	poprs %esi
-	mov %edx, %edi
+	mov %ebx, %edi
+	pop %ebx
 next
 prim keep  # addr len -- addr
 	# move a temporary value len cells long from addr into the dictionary 
 	align_dp
 	mov %esi, %edx  # save IP
-	pop %ecx        # length in cells
+	mov %ebx, %ecx        # length in cells
 	pop %esi        # get source
-	push %edi       # push permanent address
+	mov %edi, %ebx       # push permanent address
 	rep movsl
 	mov %edx, %esi  # restore IP
 next
 prim forget  # cfa -- 
 	# take the next compiled word, and delete it and 
 	# everything following it in the dictionary
-	pop %eax
-	sub $CFA_OFFS, %eax
-	mov %eax, var_dictPtr
-	mov (%eax), %eax
-	mov %eax, var_dictionary
+	sub $CFA_OFFS, %ebx
+	mov %ebx, var_dictPtr
+	mov (%ebx), %ebx
+	mov %ebx, var_dictionary
+	pop %ebx
 next
 
 # String handling prims ##############################
@@ -1071,7 +1059,7 @@ prim strEq "s=" # str str -- bool
 	xor %edx, %edx
 	pushrs %esi
 	pushrs %edi
-	pop %esi
+	mov %ebx, %esi
 	pop %edi
 	mov (%esi), %ecx
 	string_len_in_cells %ecx
@@ -1079,7 +1067,7 @@ prim strEq "s=" # str str -- bool
 	repe cmpsl
 	setnz %dl
 	dec %edx
-	push %edx
+	mov %edx, %ebx
 	poprs %edi
 	poprs %esi
 next
@@ -1089,11 +1077,11 @@ prim lenz  // zstr -- int
 	xor %ecx, %ecx
 	dec %ecx
 	xor %eax, %eax
-	pop %edi
+	mov %ebx, %edi
 	repne scasb
 	inc %ecx
 	not %ecx
-	push %ecx
+	mov %ecx, %ebx
 	poprs %edi
 next
 
@@ -1145,9 +1133,8 @@ prim znumber  # zstr -- int bool
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
 	xor %edx, %edx
-	pushrs %ebx
 	pushrs %esi
-	pop %esi  # zstr in %esi
+	mov %ebx, %esi  # zstr in %esi
 	# add $CELL_SIZE, %esi
 	# check for negative number
 	movb (%esi), %al
@@ -1307,11 +1294,9 @@ _day:
 
 .align CELL_SIZE
 _num_err:
-	pop %edx # discard sign
 	poprs %esi
-	poprs %ebx
-	push $0
-	push $0
+	movl $0, (%esp)  # over-write sign
+	mov $0, %ebx
 next
 
 .align CELL_SIZE
@@ -1323,9 +1308,8 @@ _num_done:
 	neg %eax
 4:
 	poprs %esi
-	poprs %ebx
 	push %eax
-	push $-1
+	mov $-1, %ebx
 next
 
 
@@ -1333,14 +1317,13 @@ next
 
 prim length # list -- int 
 	xor %ecx, %ecx
-	pop %eax
 1:
-	mov (%eax), %eax
-	test %eax, %eax
+	mov (%ebx), %ebx
+	test %ebx, %ebx
 	loopnz 1b
 2:
 	not %ecx
-	push %ecx
+	mov %ecx, %ebx
 next
 
 
@@ -1391,6 +1374,7 @@ end
 word handleNextArg, "handle-next-arg"
 	# .long semicolon  # any uncalled code from the previous file?
 	# check if there's an argument left to handle
+	# TODO: doesn't close open files! oops
 	.long nextArg, dup, zbranch, JUMP(1f)
 	.long zopenIn, tailcall, reset
 1:
@@ -1537,8 +1521,8 @@ word puts #  nstr --
 end
 
 word putc  # c --
-	.long dspGet, one, put
-	.long drop # drop on-stack buffer
+	.long dup, dspGet, one, put
+	.long drop, drop # drop on-stack buffer
 end
 
 word putn // n --

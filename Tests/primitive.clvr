@@ -16,7 +16,7 @@ variable: test-number
 : test-test  39  ;
 ' test-test    handles Failure
 ' test-failure handles Success
-0 1 test    39 <> if TestError raise endif
+0 1 test    39 <> if TestError raise endif   -- 1
 -- ...and can they succeed
 ' test-failure handles Failure
 ' test-success handles Success
@@ -35,7 +35,7 @@ false                0 test
 -- Logic
 -1 bool             true test
  1 bool             true test
- 0 bool            false test
+ 0 bool            false test     -- 10
 
  1  1 =             true test
 -1  1 <>            true test
@@ -47,7 +47,7 @@ false                0 test
  1  1 <=            true test
 
  10   5 15 btw?       true test
-  4   5 15 btw?      false test
+  4   5 15 btw?      false test   -- 20
 -10 -15 -1 btw?       true test
 -10  -5  5 btw?      false test
   1 -10 10 btw?       true test
@@ -59,7 +59,7 @@ ds-depth    0   test
 
 -- Arithmetic
 1  1 +       2 test
-0  1 -      -1 test
+0  1 -      -1 test   -- 30
 1  0 -       1 test
 1  1 *       1 test
 99 1 *      99 test
@@ -67,7 +67,7 @@ ds-depth    0   test
  5 2 /mod    1 test   2 test
 -5 2 /mod   -1 test  -2 test
 5 2 /        2 test
- 5 2 /modu   1 test   2 test
+ 5 2 /modu   1 test   2 test    --  40 41
 
 18 1+    19 test
 18 1-    17 test
@@ -78,7 +78,7 @@ ds-depth    0   test
  17 10 max   17 test
 -17 10 max   10 test
  17 10 umax  17 test
--17 10 umax -17 test
+-17 10 umax -17 test   -- 50
 
  17 10 min   10 test
 -17 10 min  -17 test
@@ -92,7 +92,7 @@ ds-depth    0   test
 2 50 swap /    25 test
 1 2  nip        2 test  ds-depth 0 test
 
-99 push ds-depth                 0 test    pop        99 test 
+99 push ds-depth                 0 test    pop        99 test    -- 60 61
 rs-depth push rs-depth      pop 1+ test
 rs-depth push rs-depth     peek 1+ test    pop  rs-depth test
 rs-depth stash trash      rs-depth test
@@ -103,7 +103,7 @@ rs-depth stash trash      rs-depth test
 -1  1 and     1 test
 
  0  0 or      0 test
--1  0 or     -1 test
+-1  0 or     -1 test   -- 70
 -1 -1 or     -1 test
  0 -1 or     -1 test
  1  2 or      3 test
@@ -115,7 +115,7 @@ rs-depth stash trash      rs-depth test
  0  0 xor     0 test
 
  1 not       -2 test
- 0 not       -1 test
+ 0 not       -1 test   -- 80
 -1 not        0 test
 
  1 2 shift-up  4 test
@@ -130,7 +130,7 @@ rs-depth stash trash      rs-depth test
 
 
 -- alignment
-3 align   CellSize test
+3 align   CellSize test  -- 90
 2 align   CellSize test
 1 align   CellSize test
 0 align          0 test
@@ -143,7 +143,7 @@ rs-depth stash trash      rs-depth test
 01:00:00                                 3600 test
 23:59:60                        SecondsInADay test
 1970-01-01 00:00:00 to-unixtime             0 test 
-2017-04-23 explode-date                    23 test  4 test  2017 test
+2017-04-23 explode-date                    23 test  4 test  2017 test  -- 100 101 102
 2015-02-29 explode-date                     1 test  3 test  2015 test
 
 
@@ -154,7 +154,7 @@ rs-depth stash trash      rs-depth test
 -- chars
 '7'                55 test
 7 digit-to-char   '7' test
-10 16 decompose   'a' test   0 test
+10 16 decompose   'a' test   0 test   -- 109 110
 
 
 -- control structure
@@ -170,7 +170,7 @@ s" this is cantilever\n" lens  19 test
 s" embedded \"quotes\""  lens  17 test
 s" embedded \0 null"     lens  15 test
 s" blah" s" wiffle" s=      false test
-s" blah" s" blah"   s=       true test
+s" blah" s" blah"   s=       true test  -- 120
 s" blah" s" blah\0" s=      false test
 
 -- null-terminated strings
@@ -195,7 +195,7 @@ s" embedded \0 null"      s->z lenz   9 test  -- ends at embedded \0
 ' endcol-test  7 cell after @  ' endcol test
 
 ' push        wlen  -1 test
-' nop         wlen   0 test
+' nop         wlen   0 test  -- 130
 ' endcol-test wlen   6 test
 
 #inline  -- applies to nop
@@ -217,7 +217,7 @@ false ifun4    7 test
 : ifun5 ifun4 1+ ;
 : ifun6 ' ifun4 call 1+ ;
 true ifun5     3 test
-false ifun5    8 test
+false ifun5    8 test  -- 140
 true ifun6     3 test
 
 

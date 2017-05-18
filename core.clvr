@@ -81,8 +81,6 @@ variable: if-depth
 : !-  ( x addr -- addr' )   stash !   pop 1 cell before  ;   #inline
 -- : @+  ( addr -- addr' x )   stash 1 cell after   pop @   ;
 
-
-
 -- let's implement simple pattern matching
 -- variable: pattern-match-depth
 -- variable: rs-usage
