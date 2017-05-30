@@ -1186,8 +1186,8 @@ _date:
 #else
 	# We use Lilian Date, which is a count of days since the 
 	# start of the Gregorian calendar, where 15 Oct 1582 is 1 (_not_ 0!)
-	# However, because our algorithm uses unsigned arithmetic, dates 
-	# before 1st March 1600 will be incorrect!
+	# However, because our algorithm uses unsigned arithmetic for parsing
+	# speed, dates before 1st March 1600 will be incorrect!
 
 	# first calculate year offset from 1600
 	subl $1600, %eax
@@ -1476,6 +1476,24 @@ word warns # nstr --
 	.long pop, get, warn
 end
 
+# buffered output
+variable outbuf
+variable outbuflen
+word clearout "clear-out"
+	.long zero, outbuflen, set
+end
+word flushout "flush-out"
+	.long outbuf, get, outbuflen, get, outChannel, get, write
+	.long clearout
+end
+
+word bufferedputz
+	.long dup, lenz, stash
+	.long outbuf, get, outbuflen, get, add
+	.long copyBytes
+	.long pop, outbuflen, get, add, outbuflen, set
+end
+# unbuffered output
 word put   # zstr len --
 	.long outChannel, get, write
 end
