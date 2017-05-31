@@ -2,6 +2,7 @@ ASSEMBLER32=gcc -static -nostdlib -m32 -g
 ASSEMBLER64=gcc -static -nostdlib -m64 -g 
 STEM=cantilever
 TARGET=$(STEM)
+TARGET64=cantilever64
 # PROF_TARGET=$(STEM)-profile
 
 
