@@ -152,10 +152,10 @@ section: Comparisons
 	[  1 1 le? ] true test
 	[ -1 1 le? ] true test
 	
-	[  1 2 eq? ] false test
-	[  1 0 eq? ] false test
-	[  1 1 eq? ] true test
-	[ -1 1 eq? ] false test
+	[  1 2 = ] false test
+	[  1 0 = ] false test
+	[  1 1 = ] true test
+	[ -1 1 = ] false test
 
 	[  1 2 ne? ] true test
 	[  1 0 ne? ] true test
@@ -287,8 +287,8 @@ section: Strings
 	[ s" blah"  lens ] 4 test
 	[ s" \"\""  lens ] 2 test
 	[ "" lens ] 0 test
-	[ z" hello world"     [ '.'   eq? ] scanz            ] false test
-	[ z" hello world" dup [ 'spc' eq? ] scanz   5 -  eq? ] true  test
+	[ z" hello world"     [ '.'   = ] scanz            ] false test
+	[ z" hello world" dup [ 'spc' = ] scanz   5 -  eq? ] true  test
 ;
 section: Null-terminated strings
 	[ s" hello" 1 cell after lenz ] 5 test
@@ -389,7 +389,7 @@ variable: tail-rs-depth
 
 section: Tail-calls
 	[ 10000000 tail-test ] 0 test
-	[ rs-depth 1000 tail-test drop rs-depth eq? ] true test
+	[ rs-depth 1000 tail-test drop rs-depth = ] true test
 	[ 1000 tail-rs-depth-test  tail-rs-depth @  rs-depth - ] 1 test
 	0 tail-rs-depth ! -- reset counter
 	[ 1000 non-tail-rs-depth-test   tail-rs-depth @ rs-depth - ] 1000 test

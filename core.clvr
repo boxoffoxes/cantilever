@@ -460,50 +460,6 @@ variable: tz
 
 : spc  'spc' putc ;
 
-: deflocal
-	use-dict defdoes  ( n str -- )
-		, ` #immediate
-	does
-		@ compile-literal  ' $$ ,
-;
-
-: s->z  1 cell after ;
-45 45 8 shift-up +  constant: '--'
-
-: end-local-scope  ( dict -- )
-	dictionary !
-	tail: ` ;
-;
-: local-dict
-	here 4096 cells after
-;
-
-: v(  #immediate  ( -- dict )
-	-- preserve old dictionary
-	dictionary @
-	-- switch to a temporary dictionary for locals
-	here   local-dict dp!
-	-- override the defition of ;
-	' ` ; .cfa->.label keeps   defword ' end-local-scope , ' return , ` #immediate
-	-- a count of our temp vars...
-	0
-	-- pile them on the stack. We need to reverse the
-	-- order...
-	[  dup s->z @
-		'--' ->  drop drop   [ s->z @ ')' <> ] while-word   false ;;
-		')'  ->  drop drop false ;;
-		_    ->  drop keeps swap 1+ true ;;
-	] while-word
-	-- the count is on top of the stack...
-	1 locals
-	-- Because the loop counter counts down we have to do some
-	-- mathematicsl gymnastics or variables are assigned in reverse order
-	0 $$ @ times    0 $$ @ peek - 1- swap deflocal    repeat
-	-- restore the dictionary pointer
-	dp!
-	-- compile the local stack-frame code
-	0 $$ @  compile-literal  ' locals ,
-;
 
 
 -- Structures
@@ -525,9 +481,6 @@ variable: tz
 		over ,  cells +
 	does
 		@ +
-;
-: cell:   #immediate
-	` cells:
 ;
 : end-struct  ` ; swap ! ;  #immediate  -- save the struct size
 

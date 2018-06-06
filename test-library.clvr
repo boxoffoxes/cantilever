@@ -7,7 +7,7 @@ variable: failCount
 : normal s" [0m"  puts ;
 
 : test ( fun val -- )
-	swap call eq? if
+	swap call = if
 		'.' putc
 	else
 		red 'x' putc green

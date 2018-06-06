@@ -9,7 +9,7 @@ all: $(TARGET)
 # Misc/all-words
 
 test: $(TARGET)
-	./cantilever foundation.clvr test-library.clvr core-tests.clvr
+	./cantilever core.clvr test-library.clvr core-tests.clvr
 
 Misc/all-words : $(TARGET) foundation.clvr
 	echo "dump-dicts ;" | ./cantilever foundation.clvr | sort > $@

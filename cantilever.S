@@ -13,8 +13,8 @@
 .set BUFFER_SIZE,  16*1024     #  4k
 .set WORD_BUFFER_SIZE, 256
 .set FLAG_TABLE_SIZE, (127-32) # non-space ASCII chars
-.set CELL_BITS, 2
-.set CELL_SIZE, (1<<CELL_BITS)
+.set CELL_SHIFT, 2
+.set CELL_SIZE, (1<<CELL_SHIFT)
 .set DS_SIZE, (64*CELL_SIZE)
 .set link, 0
 
@@ -121,7 +121,7 @@ str_text_\label:
 .endm
 
 .macro string_len_in_cells reg
-	shr $CELL_BITS, \reg
+	shr $CELL_SHIFT, \reg
 	inc \reg
 .endm
 
@@ -158,13 +158,24 @@ str_text_\label:
 .endm
 
 ######################################################
-# C-style functions                                  #
+# Non-forth-style functions                          #
 ######################################################
 
 # Initialisation #####################################
 
 .section .data
 constant HeapBaseAddr . "heap-base-addr"
+constant HeapSize HEAP_SIZE "heap-size"
+
+constant ScratchSize SCRATCH_SIZE "scratch-size"
+constant BufferSize BUFFER_SIZE "buffer-size"
+constant FlagTableSize FLAG_TABLE_SIZE "flag-table-size"
+constant CellShift CELL_SHIFT "cell-shift"
+
+constant LfaOffs LFA_OFFS
+constant CfaOffs CFA_OFFS
+constant BfaOffs BFA_OFFS
+constant PfaOffs PFA_OFFS
 
 
 .section .text
@@ -297,11 +308,11 @@ cold_start:
 
 .align CELL_SIZE
 _error_wrap:
-	.long lit, 2, error
+	.long two, error
 
 .align CELL_SIZE
 _eof_wrap:
-	.long EndOfFile, raise, tailcall, reset
+	.long EndOfFile, raise, tc, reset
 
 ######################################################
 # Forth-style code words                             #
@@ -339,7 +350,6 @@ next
 # ... | dodoes | ptr | data ... | behav
 #                  \______________7
 #
-# but we remove the indirection as we have anonymous functions
 #
 .align CELL_SIZE
 dodoes:
@@ -444,14 +454,10 @@ next
 constant true, -1
 constant false, 0
 
-prim match "matches?" # n1 n2 -- n1 bool
-	# semi-destructive equals for pattern matching
+prim ltz "0<"
 	pop %eax
-	xor %ecx, %ecx
-	cmpl (%esp), %eax
-	setne %cl
-	dec %ecx
-	push %ecx
+	cdq
+	push %edx
 next
 
 prim between "btw?"  # n lower upper -- bool
@@ -473,42 +479,6 @@ prim eq, "=" // a b -- bool
 	xor %ecx, %ecx
 	cmpl %eax, %edx
 	setne %cl
-	dec %ecx
-	push %ecx
-next
-prim neq, "<>" // a b -- bool
-	pop %eax
-	pop %edx
-	xor %ecx, %ecx
-	cmpl %eax, %edx
-	sete %cl
-	dec %ecx
-	push %ecx
-next
-prim ge, ">="
-	pop %eax
-	pop %edx
-	xor %ecx, %ecx
-	cmpl %eax, %edx
-	setl %cl
-	dec %ecx
-	push %ecx
-next
-prim gt, ">"
-	pop %eax
-	pop %edx
-	xor %ecx, %ecx
-	cmpl %eax, %edx
-	setle %cl
-	dec %ecx
-	push %ecx
-next
-prim le, "<="
-	pop %eax
-	pop %edx
-	xor %ecx, %ecx
-	cmpl %eax, %edx
-	setg %cl
 	dec %ecx
 	push %ecx
 next
@@ -534,13 +504,8 @@ prim xor
 	pop %eax
 	xor %eax, (%esp)
 next
-prim not
-	pop %eax
-	not %eax
-	push %eax
-next
 
-prim bool
+prim nez, "0<>"   # int -- bool
 	pop %eax
 	xor %edx, %edx
 	test %eax, %eax
@@ -566,7 +531,19 @@ next
 
 constant zero, 0, "0"
 constant one,  1, "1"
+constant two,  2, "2"
+constant five, 5, "5"
+constant nine, 9, "9"
+constant ten, 10, "10"
+constant sixteen, 16, "16"
+
 constant minus_one, -1 "-1"
+constant minus_two_hundred, -200, "-200"
+
+constant asc_0, '0', "'0'"
+constant asc_a, 'a', "'a'"
+constant asc_minus, '-', "'-'"
+constant asc_comma, ',', "','"
 
 prim mul, "*"  // int int -- int
 	pop %eax
@@ -583,7 +560,7 @@ prim mulDiv, "*/" // int int int -- int
 	mov %eax, (%esp)
 next
 
-prim udivmod, "/modu" # int int -- int int
+prim udivmod, "u/mod" # int int -- int int
 	pushrs %ebx
 	pop %ebx
 	pop %eax
@@ -660,30 +637,18 @@ prim umax
 1:
 next
 
-prim sumCells, "sum-cells"  # array count -- int
-	pop %ecx
-	pop %edx
-	xor %eax, %eax
-1:
-	jcxz 2f
-	dec %ecx
-	add %edx, %eax
-	jmp 1b
-2:
-next
-
 # Data Stack manipulation prims ######################
 
-prim dspGet, "dsp@"
+prim spGet, "sp@"
 	push %esp
 next
-prim dspSet, "dsp!"
+prim spSet, "sp!"
 	pop %esp
 next
 prim dsDepth, "ds-depth"
 	mov var_ds0, %eax
 	sub %esp, %eax
-	sar $CELL_BITS, %eax
+	sar $CELL_SHIFT, %eax
 	push %eax
 next
 
@@ -710,16 +675,16 @@ next
 
 # Return stack prims #################################
 
-prim rspGet, "rsp@"
+prim rpGet, "rp@"
 	push %ebp
 next
-prim rspSet, "rsp!"
+prim rpSet, "rp!"
 	pop %ebp
 next
 prim rsDepth, "rs-depth"
 	mov var_rs0, %eax
 	sub %ebp, %eax
-	sar $CELL_BITS, %eax
+	sar $CELL_SHIFT, %eax
 	push %eax
 next
 
@@ -742,47 +707,14 @@ prim trash
 	poprs %eax
 next
 
-prim frame
-	pushrs %ebx
-	mov %ebp, %ebx
-next
-prim unframe
-	mov %ebx, %ebp
-	poprs %ebx
-next
-prim local, "$$"  # n -- addr
-	# get cell n of current frame
-	pop %eax
-	not %eax
-	lea (%ebx, %eax, 4), %edx
-	push %edx
-next
-prim locals  # n -- 
-	# create a frame with n local variables
-	pushrs %ebx
-	mov %ebp, %ebx
-	pop %ecx
-1:
-	test %ecx, %ecx
-	jz 2f
-	pop %eax
-	dec %ecx
-	pushrs %eax
-	jmp 1b
-2:
-	pushrs $do_unframe
-next
-prim incVar "inc-var"
+prim incVar "++"
 	pop %eax
 	incl (%eax)
 next
-prim decVar "dec-var"
+prim decVar "--"
 	pop %eax
 	decl (%eax)
 next
-
-do_unframe:
-	.long unframe, return
 
 # Instruction pointer ################################
 
@@ -846,7 +778,7 @@ prim storebinc, ",b"
 next
 
 prim cell
-	shll $CELL_BITS, (%esp)
+	shll $CELL_SHIFT, (%esp)
 next
 
 prim align // addr -- addr
@@ -855,18 +787,6 @@ prim align // addr -- addr
 	add $3, %eax
 	andb $0xfc, %al
 	push %eax
-next
-
-prim isAnonymous "is-anon?" # addr -- bool
-	# is addr in the anonymous area?
-	mov var_anonCodeAreaAddr, %edx
-	pop %eax
-	sub %edx, %eax
-	xor %edx, %edx
-	cmp $SCRATCH_SIZE, %eax
-	seta %dl
-	dec %edx
-	push %edx
 next
 
 # Flow control #######################################
@@ -898,13 +818,8 @@ prim zbranch
 	add %eax, %esi
 next
 
-prim tailcall, "tail:"
+prim tc
 	mov (%esi), %esi
-	lea 4(%esi), %esi
-next
-
-prim tailcallTOS, "tailcall-tos"
-	pop %esi
 	lea 4(%esi), %esi
 next
 
@@ -913,28 +828,9 @@ prim call
 	jmp *(%eax)
 next
 
-prim select "?"
-	xor %edx, %edx
-	xor %ecx, %ecx
-	mov 8(%esp), %eax  # cond
-	test %eax, %eax
-	setnz %dl
-	setz %cl
-	dec %edx
-	dec %ecx
-	and (%esp), %edx  # else
-	and 4(%esp), %ecx # then
-	addl %ecx, %edx
-	lea 8(%esp), %esp
-	mov %edx, (%esp)
-next
-
 # Numeric literals ###################################
+# must be pre-defined as constants!
 
-prim lit
-	lodsl
-	push %eax
-next
 # we give this a different name to make code easier to read
 prim quote, "'"
 	lodsl
@@ -1247,20 +1143,6 @@ _num_done:
 next
 
 
-# List prims #########################################
-
-prim length # list -- int 
-	xor %ecx, %ecx
-	pop %eax
-1:
-	mov (%eax), %eax
-	test %eax, %eax
-	loopnz 1b
-2:
-	not %ecx
-	push %ecx
-next
-
 
 ######################################################
 # Forth-style non-primitive words                    #
@@ -1272,15 +1154,13 @@ word initialiseVM
 	# initialise the dictionary pointer
 	.long getBrkAddr, dup, dictPtr, set, dpSet
 	# allocate default heap
-	.long lit, HEAP_SIZE, setHeapSize
+	.long HeapSize, setHeapSize
 	# create scratchpad
-	.long lit, SCRATCH_SIZE, buffer, scratchpadAddr, set
-	# create anon code area
-	.long lit, SCRATCH_SIZE, buffer, anonCodeAreaAddr, set
+	.long ScratchSize, buffer, scratchpadAddr, set
 	# set up an IO buffer
-	.long lit, BUFFER_SIZE, buffer, ioBuffer, set
+	.long BufferSize, buffer, ioBuffer, set
 	# initialise commandline flag handler
-	.long lit, FLAG_TABLE_SIZE, cell, buffer, flagTableAddr, set
+	.long FlagTableSize, cell, buffer, flagTableAddr, set
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
@@ -1288,33 +1168,28 @@ word initialiseVM
 	.long handleArgs
 1:
 	.long welcome
-.long tailcall, reset
+.long tc, reset
 
 word reset
-	.long rs0, get, rspSet 
-	.long interpreter, get
-.long tailcallTOS
-
-# word initCommandlineFlags, "init-commandline-flags"
-#	.long quote, singleStepper, lit, 'S', flag
-# end
+	.long rs0, get, rpSet 
+.long tc, interpreter
 
 word handleArgs, "handle-args"
 	# first set this function to be our EOF handler
 	.long quote, handleNextArg, handles, EndOfFile
-	.long tailcall, handleNextArg
+	.long tc, handleNextArg
 end
 word handleNextArg, "handle-next-arg"
 	# .long semicolon  # any uncalled code from the previous file?
 	# check if there's an argument left to handle
 	.long nextArg, dup, zbranch, JUMP(1f)
-	.long zopenIn, tailcall, reset
+	.long zopenIn, tc, reset
 1:
 	# no args left: switch to reading stdin and
 	# reset EOF handler
 	.long drop, stdin, inChannel, set
 	.long quote, exit0, handles, EndOfFile
-.long tailcall, reset
+.long tc, reset
 word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
@@ -1326,7 +1201,7 @@ end
 constant spc, 32, "'spc'"
 
 word stringCellLength, "string-cell-length"   #  str -- n
-	.long get, lit, CELL_BITS, rshift, inc, inc  # byte length, plus null, plus length field
+	.long get, CellShift, rshift, inc, inc  # byte length, plus null, plus length field
 end
 word keeps   # tmpStr -- str
 	.long dup, stringCellLength, keep
@@ -1397,11 +1272,11 @@ word error
 
 word digit_to_char, "digit-to-char" # n -- c
 	.long dup 
-	.long zero, lit, 9, between, zbranch, JUMP(1f)
-	.long lit, '0', add
+	.long zero, nine, between, zbranch, JUMP(1f)
+	.long asc_0, add
 	.long branch, JUMP(2f)
 1:
-	.long lit, 'a'-10, add
+	.long asc_a, 10, sub, add
 2:
 end
 word decompose  # n base -- 0 c ... 
@@ -1413,8 +1288,8 @@ word decompose  # n base -- 0 c ...
 	.long drop, trash
 end
 word putsign     # n -- u
-	.long dup, lit, (1<<(CELL_SIZE*8-1)), and, zbranch, JUMP(1f)
-	.long neg, lit, '-', putc
+	.long dup, ltz, zbranch, JUMP(1f)
+	.long neg, asc_minus, putc
 1:
 end
 word putnumber   # n base --
@@ -1452,18 +1327,15 @@ word puts #  nstr --
 end
 
 word putc  # c --
-	.long dspGet, one, put
+	.long spGet, one, put
 	.long drop # drop on-stack buffer
 end
 
 word putn // n --
-	.long putsign
-	.long lit, 10
-	.long putnumber
+	.long putsign, ten, putnumber
 end
 word putx // n --
-	.long lit, 16
-	.long putnumber
+	.long sixteen, putnumber
 end
 
 word colour  #  colour -- 
@@ -1476,11 +1348,11 @@ end
 
 
 # File IO ###############################################
-
+constant OpenPerms 0666
 word zopen   # zstr mode -- fh
 	# syscall3 requires arg order: perms mode zstr callid
 	.long swap, push, push
-	.long lit, 0666, pop, pop
+	.long OpenPerms, pop, pop
 	.long SysOpen, syscall3
 	.long dup, zero, lt, zbranch, JUMP(1f)
 	.long drop, FileOpenFailed, raise
@@ -1541,7 +1413,7 @@ end
 
 # Get the st_size field of the C stat struct
 word st_size ".st_size"
-	.long lit, 5, cell, add
+	.long five, cell, add
 end
 
 word fileLength  "file-length" # fd -- len
@@ -1580,7 +1452,7 @@ word exit #  n --
 	.long SysExit, syscall1
 end
 
-word bye, , call
+word bye
 	.long byebye, puts, nl
 	.long zero, exit
 end
@@ -1608,7 +1480,7 @@ word mmap  # fd flags prot len -- addr
 	.long push, push, push, push
 	#     offs  fd   flag prot len  addr
 	.long zero, pop, pop, pop, pop, zero, SysMmap, syscall6
-	.long dup, lit, -200, minus_one, between, zbranch, JUMP(1f)
+	.long dup, minus_two_hundred, minus_one, between, zbranch, JUMP(1f)
 	.long MmapFailed, raise
 1:
 end
@@ -1667,23 +1539,20 @@ word find // str -- xt behav
 	.long zbranch, JUMP(1b)
 	.long dup, cfa, swap, behaviour, trash, return
 2:
-	.long drop, peek, number, zbranch, JUMP(3f)
-	.long quote, compileLiteral, trash, return
-3:
 	.long drop, pop, NotFoundException, raise
 end
 
 word lfa, ".lfa"  # entry -- addr
-	.long lit, LFA_OFFS, add
+	.long LfaOffs, add
 end
 word cfa, ".cfa" // entry -- codeAddr
-	.long lit, CFA_OFFS, add
+	.long CfaOffs, add
 end
 word bfa, ".bfa"
-	.long lit, BFA_OFFS, add
+	.long BfaOffs, add
 end
 word pfa, ".pfa"
-	.long lit, PFA_OFFS, add
+	.long PfaOffs, add
 end
 
 word label, ".label"  // entry -- str
@@ -1693,7 +1562,7 @@ word behaviour, ".behaviour"
 	.long bfa, get
 end
 word cfaToLabel, ".cfa->.label"
-	.long lit, CFA_OFFS, sub
+	.long CfaOffs, sub
 	.long label
 end
 
@@ -1702,41 +1571,10 @@ word labelForVar, "label-for-var"
 end
 
 word nl
-	.long lit, '\n', putc
-end
-
-word compileLiteral, "compile-literal" // n --
-	.long quote, lit, storeinc, storeinc
+	.long ten, putc
 end
 
 # Words that create words ############################
-
-variable NotInADataBlock
-
-word lambda, "[", call  # -- addr
-	.long quote, data, storeinc
-	.long here, zero, storeinc
-	.long DoAddr, storeinc
-end
-word endLambda, "]", call  # addr --
-	.long quote, return, storeinc
-	.long here, over, one, cell, add, sub, swap, set
-end
-word dataLength, "data-length"  # lambda -- len
-	.long dup, lit, 2, cell, sub, get   # fetch the data instruction
-	.long quote, data, eq, zbranch, JUMP(1f)
-	.long one, cell, sub, get, return      # get the length in bytes and return
-1:
-	.long NotInADataBlock, raise
-end
-
-word as, , call # addr -- 
-	# a word to compile a definition from a lambda in anonymous code space
-	.long semicolon, useDict
-	.long word, keeps, header
-	.long dup, dataLength  # get length of data block
-	.long lit, CELL_BITS, rshift, keep, drop  # convert to cell length and keep.
-end
 
 word header  # str --
 	.long dpAlign
@@ -1765,69 +1603,42 @@ word defvar    # val str --
 end
 
 word create
-	.long semicolon, useDict
 	.long word, keeps, defdoes
-end
-word createImm, "create-immed"
-	.long create, immed
 end
 word does
 	# This is subtle! pop gives us the address of the word after
 	# does in the definition (and prevents subsequent code executing).
 	# We put it in the link field of the word create has just made.
 	.long pop, dictionary, get, pfa, set
-	# Finally we switch back to anonymous mode
-	.long useAnon
 end
 word createConstant, "create-constant"  # val --
-	# constant: potentially needs to evaluate the preceding expression
-	# so there's a value waiting
-	.long semicolon, useDict
 	.long word, keeps, defconst, storeinc
-	.long useAnon
 end
 word createVariable, "create-variable"  # --
-	.long semicolon, useDict
 	.long word, keeps, defvar
 	.long zero, storeinc
-	.long useAnon
 end
 word createWord, "create-word"
-	.long semicolon, useDict
 	.long word, keeps, defword
 end
 word immed, "#immediate", call
 	.long dictionary, get, bfa, quote, call, swap, set
 end
 
-word constantColon, "constant:", call
+word constantColon, "constant:"
 	.long createConstant
 end
-word variableColon, "variable:", call
+word variableColon, "variable:"
 	.long createVariable
 end
-word colon, ":", call
+word colon, ":"
 	.long createWord
-end
-word semicolon, ";", call
-	.long quote, return, storeinc
-	.long here, isAnonymous, zbranch, JUMP(1f)
-	.long anonCodeAreaAddr, get, call
-1:
-.long tailcall, useAnon
+.long tc, compiler
 
-word useDict, "use-dict"
-	.long here, isAnonymous, zbranch, JUMP(1f)
-	.long dictPtr, get, dpSet
-1:
+word semicolon, ";", call
+	.long compile, return
+	.long trash  # return to the interpreter loop that called compiler
 end
-word useAnon, "use-anon"
-	.long here, isAnonymous, not, zbranch, JUMP(1f)
-	.long here, dictPtr, set
-1:
-	.long anonCodeAreaAddr, get, dpSet
-	.long DoAddr, storeinc
-.long tailcall, prompt
 
 word welcome
 	.long inChannel, get, isATTY, zbranch, JUMP(1f)
@@ -1837,24 +1648,25 @@ end
 word prompt
 	.long inChannel, get, isATTY, zbranch, JUMP(1f)
 	.long nl, spc, putc, dsDepth, putn
-	.long lit, ',', putc, rsDepth, putn
+	.long asc_comma, putc, rsDepth, putn
 	.long promptText, get, puts
 1:
 end
 
-variable DataStackUnderflow
-variable DataStackOverflow
+word compile
+	# read from the instruction stream and compile a call to it
+	.long pop, getStep, storeinc, push
+end
 
-word interpret
-	.long useAnon
-1:
+word compiler
 	.long word, find, call
-	.long branch, JUMP(1b)
-end
+.long tc, compiler
 
-word suppress, "`", call
-	.long word, find, drop, storeinc
-end
+word interpreter
+	.long prompt
+	.long word, find, drop, call
+.long tc, interpreter
+
 
 .section .rodata
 
@@ -1862,7 +1674,7 @@ constant DoAddr,      do
 constant DoConstAddr, doconst
 constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
-constant CellBits, CELL_BITS
+constant CellBits, CELL_SHIFT
 constant CellSize, CELL_SIZE
 
 #ifdef CANTILEVER_CHEAP_DATE
@@ -1881,7 +1693,6 @@ variable ioBuffer, , "io-buffer"
 variable bufpos
 variable bufend
 variable scratchpadAddr, , "scratchpad-addr"
-variable anonCodeAreaAddr, , "anon-code-area-addr"
 
 variable ds0
 variable rs0
@@ -1903,5 +1714,4 @@ string DefaultPrompt, " ok "
 variable decimal_places, 0, "decimal-places"
 
 variable promptText, str_DefaultPrompt, "prompt-text"
-variable interpreter, interpret
 variable dictionary, link   # MUST BE LAST
