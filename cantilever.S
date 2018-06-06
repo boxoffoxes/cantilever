@@ -91,6 +91,10 @@ word_\label:
 	.int \val
 .endm
 
+.macro literal label, val
+	constant \label, \val, "\val"
+.endm
+
 .macro variable label, val=0, name
 	word \label, "\name", , dovar
 var_\label:
@@ -529,16 +533,16 @@ next
 
 # Arithmetic prims ###################################
 
-constant zero, 0, "0"
-constant one,  1, "1"
-constant two,  2, "2"
-constant five, 5, "5"
-constant nine, 9, "9"
-constant ten, 10, "10"
-constant sixteen, 16, "16"
+literal zero, 0
+literal one,  1
+literal two,  2
+literal five, 5
+literal nine, 9
+literal ten, 10
+literal sixteen, 16
 
-constant minus_one, -1 "-1"
-constant minus_two_hundred, -200, "-200"
+literal minus_one, -1
+literal minus_two_hundred, -200
 
 constant asc_0, '0', "'0'"
 constant asc_a, 'a', "'a'"
@@ -1276,7 +1280,7 @@ word digit_to_char, "digit-to-char" # n -- c
 	.long asc_0, add
 	.long branch, JUMP(2f)
 1:
-	.long asc_a, 10, sub, add
+	.long asc_a, ten, sub, add
 2:
 end
 word decompose  # n base -- 0 c ... 
