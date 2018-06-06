@@ -140,8 +140,8 @@ str_text_\label:
 .endm
 
 .macro align_dp
-	add $3, %edi
-	and $0xfffffffc, %edi
+	add $(CELL_SIZE-1), %edi
+	and $(~(CELL_SIZE-1)), %edi
 .endm
 
 .macro times_ten reg
