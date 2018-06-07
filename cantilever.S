@@ -358,6 +358,99 @@ dodoes:
 	push %edx
 next
 
+
+######################################################
+# Minimal set of prims                               #
+######################################################
+
+prim return
+	poprs %esi
+next
+
+prim nez, "0<>"   # int -- bool
+	pop %eax
+	xor %edx, %edx
+	test %eax, %eax
+	setz %dl
+	dec %edx
+	push %edx
+next
+
+prim ltz "0<"
+	pop %eax
+	cdq
+	push %edx
+next
+
+prim get, "@"
+	pop %eax
+	push (%eax)
+next
+
+prim set "!" # int addr -- 
+	pop %eax
+	pop %edx
+	mov %edx, (%eax)
+next
+
+prim and
+	pop %eax
+	and %eax, (%esp)
+next
+prim or
+	pop %eax
+	or %eax, (%esp)
+next
+prim xor
+	pop %eax
+	xor %eax, (%esp)
+next
+
+prim add, "+" // a b -- a+b
+	pop %eax
+	add %eax, (%esp)
+next
+
+prim spGet, "sp@"
+	push %esp
+next
+prim spSet, "sp!"
+	pop %esp
+next
+
+prim rpGet, "rp@"
+	push %ebp
+next
+prim rpSet, "rp!"
+	pop %ebp
+next
+
+
+######################################################
+# Minimal system interface                           #
+######################################################
+
+prim qrx "?rx"  # -- b bool
+	push $0
+	mov $__NR_read, %eax
+	mov $0, %ebx
+	mov $esp, %ecx
+	mov $1, %edx
+	int $0x80
+	cdq
+	not %edx
+	push %edx
+next
+
+prim tx "tx!"   # b --
+	mov $__NR_write, %eax
+	mov $1, %ebx
+	mov %esp, %ecx
+	mov $1, %edx
+	int $0x80
+	pop %eax
+next
+
 # System calls #######################################
 
 # System call numbers
@@ -453,12 +546,6 @@ next
 constant true, -1
 constant false, 0
 
-prim ltz "0<"
-	pop %eax
-	cdq
-	push %edx
-next
-
 prim between "btw?"  # n lower upper -- bool
 	pop %edx  # upper
 	pop %ecx  # lower
@@ -489,28 +576,6 @@ prim lt, "<"
 	setge %cl
 	dec %ecx
 	push %ecx
-next
-
-prim and
-	pop %eax
-	and %eax, (%esp)
-next
-prim or
-	pop %eax
-	or %eax, (%esp)
-next
-prim xor
-	pop %eax
-	xor %eax, (%esp)
-next
-
-prim nez, "0<>"   # int -- bool
-	pop %eax
-	xor %edx, %edx
-	test %eax, %eax
-	setz %dl
-	dec %edx
-	push %edx
 next
 
 prim lshift, "<<" // int n -- int
@@ -584,10 +649,6 @@ prim sub, "-" // int int -- int
 	pop %eax
 	sub %eax, (%esp)
 next
-prim add, "+" // int int -- int
-	pop %eax
-	add %eax, (%esp)
-next
 
 prim neg
 	negl (%esp)
@@ -638,12 +699,6 @@ next
 
 # Data Stack manipulation prims ######################
 
-prim spGet, "sp@"
-	push %esp
-next
-prim spSet, "sp!"
-	pop %esp
-next
 prim dsDepth, "ds-depth"
 	mov var_ds0, %eax
 	sub %esp, %eax
@@ -674,12 +729,6 @@ next
 
 # Return stack prims #################################
 
-prim rpGet, "rp@"
-	push %ebp
-next
-prim rpSet, "rp!"
-	pop %ebp
-next
 prim rsDepth, "rs-depth"
 	mov var_rs0, %eax
 	sub %ebp, %eax
@@ -723,10 +772,6 @@ next
 
 # Memory access ######################################
 
-prim get, "@"
-	pop %eax
-	push (%eax)
-next
 prim getByte, "@b"
 	xor %eax, %eax
 	pop %edx
@@ -739,11 +784,6 @@ prim getStep "@+"  # addr -- addr' n
 	push (%eax)
 next
 
-prim set "!" # int addr -- 
-	pop %eax
-	pop %edx
-	mov %edx, (%eax)
-next
 prim setByte "!b" # int addr -- 
 	pop %eax
 	pop %edx
@@ -789,12 +829,17 @@ next
 
 # Flow control #######################################
 
-prim return
-	poprs %esi
-next
-
 prim branch
 	add (%esi), %esi
+next
+
+prim zbr  # bool --
+	lodsl
+	pop %edx
+	test %edx, %edx
+	jnz 1f
+	mov %eax, %esi
+1:
 next
 
 prim zbranch 
