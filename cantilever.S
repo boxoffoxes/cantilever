@@ -1631,6 +1631,26 @@ word semicolon, ";", call
 	.long trash  # return to the interpreter loop that called compiler
 end
 
+word mark
+	.long here, zero, storeinc
+end
+word resolve
+	.long here, swap, set
+end
+
+word if, "?[", call
+	.long compile, zbr, mark
+end
+word endif, "]", call
+	.long resolve
+end
+word case, "=[", call
+	.long compile, over,  compile, eq,  compile, zbr,  mark
+end
+word endcase, ";]", call
+	.long compile, return,  resolve
+end
+
 word welcome
 	.long inChannel, get, isATTY, zbranch, JUMP(1f)
 	.long WelcomeMessage, puts
