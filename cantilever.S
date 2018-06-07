@@ -174,7 +174,6 @@ constant HeapSize HEAP_SIZE "heap-size"
 constant ScratchSize SCRATCH_SIZE "scratch-size"
 constant BufferSize BUFFER_SIZE "buffer-size"
 constant FlagTableSize FLAG_TABLE_SIZE "flag-table-size"
-constant CellShift CELL_SHIFT "cell-shift"
 
 constant LfaOffs LFA_OFFS
 constant CfaOffs CFA_OFFS
@@ -346,10 +345,6 @@ next
 
 
 # The black-magic of forth: data with behaviour.
-#
-# ... | dodoes | behav | data ...
-#
-# A more typical implementation would have been:
 # 
 # ... | dodoes | ptr | data ... | behav
 #                  \______________7
@@ -518,13 +513,13 @@ prim nez, "0<>"   # int -- bool
 	push %edx
 next
 
-prim lshift, "shift-up" // int n -- int
+prim lshift, "<<" // int n -- int
 	pop %ecx
 	pop %eax
 	shl %cl, %eax
 	push %eax
 next
-prim rshift, "shift-down" // int n -- int
+prim rshift, ">>" // int n -- int
 	pop %ecx
 	pop %eax
 	sar %cl, %eax
@@ -738,7 +733,6 @@ prim getByte, "@b"
 	mov (%edx), %al
 	push %eax
 next
-
 prim getStep "@+"  # addr -- addr' n
 	mov (%esp), %eax
 	addl $4, (%esp)
@@ -788,8 +782,8 @@ next
 prim align // addr -- addr
 	// align to cell boundary
 	pop %eax
-	add $3, %eax
-	andb $0xfc, %al
+	add $(CELL_SIZE-1), %eax
+	andb $(~(CELL_SIZE-1)), %al
 	push %eax
 next
 
@@ -797,13 +791,6 @@ next
 
 prim return
 	poprs %esi
-next
-
-prim data
-	mov (%esi), %eax
-	lea 4(%esi), %edx
-	lea 4(%esi, %eax), %esi
-	push %edx
 next
 
 prim branch
@@ -1678,7 +1665,7 @@ constant DoAddr,      do
 constant DoConstAddr, doconst
 constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
-constant CellBits, CELL_SHIFT
+constant CellShift CELL_SHIFT
 constant CellSize, CELL_SIZE
 
 #ifdef CANTILEVER_CHEAP_DATE
