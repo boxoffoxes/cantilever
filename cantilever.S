@@ -434,12 +434,12 @@ prim qrx "?rx"  # -- b bool
 	push $0
 	mov $__NR_read, %eax
 	mov $0, %ebx
-	mov $esp, %ecx
+	mov %esp, %ecx
 	mov $1, %edx
 	int $0x80
-	cdq
-	not %edx
-	push %edx
+	cdq     # sign-extend return code into edx
+	or %edx, (%esp) # if edx is negative replace the invalid char
+	push $-1  # this implementation always reads something!
 next
 
 prim tx "tx!"   # b --
@@ -529,11 +529,6 @@ variable errChannel, 2, "err-channel"
 constant ReadOnly,   0
 constant WriteOnly,  01101
 constant ReadWrite,  02202
-
-prim key
-	call _key
-	push %eax
-next
 
 prim word  # -- str
 	call _word
@@ -808,11 +803,6 @@ next
 prim storeinc, ","
 	pop %eax
 	stosl
-next
-
-prim storebinc, ",b"
-	pop %eax
-	stosb
 next
 
 prim cell
@@ -1230,6 +1220,15 @@ word nextArg, "next-arg"
 	.long argv, get, one, cell, add
 	.long dup, argv, set
 	.long get
+end
+
+# IO ##################################################
+
+word key
+1:	.long qrx
+	.long zbranch, JUMP(1b)
+	.long dup, ltz, zbranch, JUMP(2f), EndOfFile, raise, return
+2:
 end
 
 # Strings #############################################
