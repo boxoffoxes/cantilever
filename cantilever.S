@@ -598,6 +598,7 @@ constant asc_0, '0', "'0'"
 constant asc_a, 'a', "'a'"
 constant asc_minus, '-', "'-'"
 constant asc_comma, ',', "','"
+constant asc_spc, ' ', "'spc'"
 
 prim mul, "*"  // int int -- int
 	pop %eax
@@ -1219,11 +1220,35 @@ end
 
 # IO ##################################################
 
+word not
+	.long minus_one, xor
+end
+
+word pad
+	.long scratchpadAddr, get
+end
+word build  # addr b -- addr'
+	.long over, setByte, one, add
+	.long key, asc_spc, over, lt, zbranch, JUMP(1f)
+	.long tc, build
+1:	.long drop
+end
+word skipws  # -- b
+	.long key, asc_spc, over, lt, not, zbranch, JUMP(1f)
+	.long drop, tc, skipws
+1:
+end
+
 word key
 1:	.long qrx
 	.long zbranch, JUMP(1b)
 	.long dup, ltz, zbranch, JUMP(2f), EndOfFile, raise
 2:
+end
+word word   # -- str
+	.long WordBuffer, one, cell, add
+	.long dup, skipws, build, zero, over, set, swap, sub
+	.long WordBuffer, set, WordBuffer
 end
 
 # Strings #############################################
