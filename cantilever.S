@@ -12,7 +12,6 @@
 .set SCRATCH_SIZE, 16*1024     # 16k
 .set BUFFER_SIZE,  16*1024     #  4k
 .set WORD_BUFFER_SIZE, 256
-.set FLAG_TABLE_SIZE, (127-32) # non-space ASCII chars
 .set CELL_SHIFT, 2
 .set CELL_SIZE, (1<<CELL_SHIFT)
 .set DS_SIZE, (64*CELL_SIZE)
@@ -173,7 +172,6 @@ constant HeapSize HEAP_SIZE "heap-size"
 
 constant ScratchSize SCRATCH_SIZE "scratch-size"
 constant BufferSize BUFFER_SIZE "buffer-size"
-constant FlagTableSize FLAG_TABLE_SIZE "flag-table-size"
 
 constant LfaOffs LFA_OFFS
 constant CfaOffs CFA_OFFS
@@ -201,42 +199,6 @@ _start:
 next
 
 # Utility function ###################################
-
-.align CELL_SIZE
-_fill_buffer:
-	push %ebx
-	mov $__NR_read, %eax
-	mov var_inChannel, %ebx
-	mov var_ioBuffer, %ecx
-	mov %ecx, var_bufpos  // reset buffer position
-	mov $BUFFER_SIZE, %edx
-	int $0x80
-	test %eax, %eax
-	jbe _eof
-	add %eax, %ecx
-	mov %ecx, var_bufend
-	pop %ebx
-	// fallthrough
-.align CELL_SIZE
-_key:
-	mov var_bufpos, %edx
-	cmp var_bufend, %edx
-	jae _fill_buffer
-	movzbl (%edx), %eax
-	inc %edx
-	mov %edx, var_bufpos
-ret
-
-.align CELL_SIZE
-_eof:
-	pop %ebx  # we're called from fill-buffer, which preserves %ebx
-	mov var_ioBuffer, %eax
-	mov %eax, var_bufend
-	mov %eax, var_bufpos
-	pop %eax   # _key return addr
-	pop %eax   # _word return addr
-	mov $_eof_wrap, %esi
-next
 
 #ifdef CANTILEVER_EXECUTION_TRACE
 _space_buffer:
@@ -269,41 +231,6 @@ _trace:
 ret
 #endif
 
-.align CELL_SIZE
-_word:  // copy the next word into wordbuffer
-	// skip whitespace
-	call _key
-	cmpb $' ', %al
-	jbe _word 
-	// copy word
-	mov $wordbuffer_text, %edx
-1:
-	movb %al, (%edx)
-	inc %edx
-	cmpl $end_wordbuffer, %edx
-	jae 2f // buffer overflow!
-	pushrs %edx  // save our pointer
-	call _key
-	poprs %edx   // ...and restore it
-	cmpb $' ', %al
-	ja 1b
-	movl $0, CELL_SIZE(%edx)  // add two words of nulls after word
-	//mov $0, 8(%edx)
-	// populate the length field of the buffer
-	movl $0, (%edx)
-	sub $wordbuffer_text, %edx
-	mov %edx, wordbuffer
-ret
-2:
-	// TODO: should skip the rest of the long word too...
-	movl $0x202e2e2e, wordbuffer+12 // truncate the long word with "... "
-	movl $12, wordbuffer
-	movl $wordbuffer, (%esp)  // over-write our return address
-	push $str_TooLong
-	# handle error. Was function, but used only here
-	mov $_error_wrap, %esi
-next
-
 # Wrappers for calling words from code ###############
 .align CELL_SIZE
 cold_start:
@@ -311,9 +238,6 @@ cold_start:
 
 _error_wrap:
 	.long two, error
-
-_eof_wrap:
-	.long EndOfFile, raise, tc, reset
 
 ######################################################
 # Forth-style code words                             #
@@ -755,15 +679,9 @@ prim decVar "--"
 	decl (%eax)
 next
 
-# Instruction pointer ################################
-
-prim ipGet, "ip@"
-	push %esi
-next
-
 # Memory access ######################################
 
-prim getByte, "@b"
+prim getb, "@b"
 	xor %eax, %eax
 	pop %edx
 	mov (%edx), %al
@@ -775,7 +693,7 @@ prim getStep "@+"  # addr -- addr' n
 	push (%eax)
 next
 
-prim setByte "!b" # int addr -- 
+prim setb "!b" # int addr -- 
 	pop %eax
 	pop %edx
 	mov %dl, (%eax)
@@ -853,7 +771,6 @@ next
 # Numeric literals ###################################
 # must be pre-defined as constants!
 
-# we give this a different name to make code easier to read
 prim quote, "'"
 	lodsl
 	push %eax
@@ -1182,7 +1099,7 @@ word initialiseVM
 	# set up an IO buffer
 	.long BufferSize, buffer, ioBuffer, set
 	# initialise commandline flag handler
-	.long FlagTableSize, cell, buffer, flagTableAddr, set
+	#.long FlagTableSize, cell, buffer, flagTableAddr, set
 	# are there any commandline args...
 	.long argc, get, dec, zbranch, JUMP(1f)
 	# ...yes, then open the first one
@@ -1228,7 +1145,7 @@ word pad
 	.long scratchpadAddr, get
 end
 word build  # addr b -- addr'
-	.long over, setByte, one, add
+	.long over, setb, one, add
 	.long key, asc_spc, over, lt, zbranch, JUMP(1f)
 	.long tc, build
 1:	.long drop
@@ -1268,7 +1185,7 @@ end
 word scanz # zstr pred -- addr
 	.long push, dec
 1:
-	.long inc, dup, getByte
+	.long inc, dup, getb
 	.long dup, zbranch, JUMP(2f)  # reached the NULL terminator at the end of the string
 	.long peek, call, zbranch, JUMP(1b)
 	.long dup
@@ -1772,7 +1689,6 @@ variable scratchpadAddr, , "scratchpad-addr"
 variable ds0
 variable rs0
 variable dp0
-variable flagTableAddr
 variable dictPtr, ,"dict-ptr"
 
 variable NotFoundException, notFoundHandler
