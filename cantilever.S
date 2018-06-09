@@ -309,11 +309,9 @@ next
 cold_start:
 	.long initialiseVM
 
-.align CELL_SIZE
 _error_wrap:
 	.long two, error
 
-.align CELL_SIZE
 _eof_wrap:
 	.long EndOfFile, raise, tc, reset
 
@@ -431,15 +429,18 @@ next
 ######################################################
 
 prim qrx "?rx"  # -- b bool
+	# 1: char waiting. 0: no char
 	push $0
 	mov $__NR_read, %eax
 	mov $0, %ebx
 	mov %esp, %ecx
 	mov $1, %edx
 	int $0x80
-	cdq     # sign-extend return code into edx
-	or %edx, (%esp) # if edx is negative replace the invalid char
-	push $-1  # this implementation always reads something!
+	test %eax, %eax
+	ja 1f        # jump if no error, and not eof
+	dec %eax
+	mov %eax, (%esp) # otherwise return an unreasonable character value
+1:	push $-1
 next
 
 prim tx "tx!"   # b --
@@ -1227,7 +1228,7 @@ end
 word key
 1:	.long qrx
 	.long zbranch, JUMP(1b)
-	.long dup, ltz, zbranch, JUMP(2f), EndOfFile, raise, return
+	.long dup, ltz, zbranch, JUMP(2f), EndOfFile, raise
 2:
 end
 
