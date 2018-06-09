@@ -531,12 +531,6 @@ constant ReadOnly,   0
 constant WriteOnly,  01101
 constant ReadWrite,  02202
 
-prim word  # -- str
-	call _word
-	// push the address of temporary buffer
-	push $wordbuffer
-next
-
 # Logical and bitwise prims ##########################
 
 constant true, -1
