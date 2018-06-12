@@ -655,15 +655,6 @@ prim trash
 	poprs %eax
 next
 
-prim incVar "++"
-	pop %eax
-	incl (%eax)
-next
-prim decVar "--"
-	pop %eax
-	decl (%eax)
-next
-
 # Memory access ######################################
 
 prim getb, "@b"
@@ -689,6 +680,15 @@ prim dpGet, "dp@"
 next
 prim dpSet, "dp!"
 	pop %edi
+next
+
+prim incVar "++"
+	pop %eax
+	incl (%eax)
+next
+prim decVar "--"
+	pop %eax
+	decl (%eax)
 next
 
 prim here
@@ -729,18 +729,6 @@ prim zbr  # bool --
 	jnz 1f
 	mov %eax, %esi
 1:
-next
-
-prim zbranch 
-	lodsl                  # distance to branch
-	pop %edx               # boolean to test
-	xor %ecx, %ecx
-	sub $CELL_SIZE, %eax   # because lodsl incremented %esi
-	test %edx, %edx        # bool is zero?
-	setnz %cl
-	dec %ecx
-	and %ecx, %eax         # %ecx is 0 if %edx is non-zero
-	add %eax, %esi
 next
 
 prim tc
@@ -1083,7 +1071,7 @@ word initialiseVM
 	# initialise commandline flag handler
 	#.long FlagTableSize, cell, buffer, flagTableAddr, set
 	# are there any commandline args...
-	.long argc, get, dec, zbranch, JUMP(1f)
+	.long argc, get, dec, zbr,(1f)
 	# ...yes, then open the first one
 	#.long argv, get, one, cell, add, get
 	.long handleArgs
@@ -1103,7 +1091,7 @@ end
 word handleNextArg, "handle-next-arg"
 	# .long semicolon  # any uncalled code from the previous file?
 	# check if there's an argument left to handle
-	.long nextArg, dup, zbranch, JUMP(1f)
+	.long nextArg, dup, zbr,(1f)
 	.long zopenIn, tc, reset
 1:
 	# no args left: switch to reading stdin and
@@ -1128,20 +1116,20 @@ word pad
 end
 word build  # addr b -- addr'
 	.long over, setb, one, add
-	.long key, asc_spc, over, lt, zbranch, JUMP(1f)
+	.long key, asc_spc, over, lt, zbr,(1f)
 	.long tc, build
 1:	.long drop
 end
 word skipws  # -- b
-	.long key, asc_spc, over, lt, not, zbranch, JUMP(1f)
+	.long key, asc_spc, over, lt, not, zbr,(1f)
 	.long drop, tc, skipws
 1:
 end
 
+# : key  ?rx 0= ?[ key ;] dup 0< ?[ EndOfFile raise ;] ;
 word key
-1:	.long qrx
-	.long zbranch, JUMP(1b)
-	.long dup, ltz, zbranch, JUMP(2f), EndOfFile, raise
+	.long qrx, zero, eq, zbr,(1f), tc, key
+1:	.long dup, ltz, zbr,(2f), EndOfFile, raise
 2:
 end
 word word   # -- str
@@ -1164,25 +1152,6 @@ word copys   # str addr --
 	.long push, dup, stringCellLength, pop, copy
 end
 
-word scanz # zstr pred -- addr
-	.long push, dec
-1:
-	.long inc, dup, getb
-	.long dup, zbranch, JUMP(2f)  # reached the NULL terminator at the end of the string
-	.long peek, call, zbranch, JUMP(1b)
-	.long dup
-2:
-	.long nip, trash
-end
-word scanIn "scan-in"  # pred -- c
-	# read chars from in-channel until pred returns true
-	.long push  # store the pred off the stack
-1:
-	.long key, peek, call
-	.long zbranch, JUMP(1b)
-	.long trash
-end
-
 word clearInputBuffer, "clear-input-buffer"
 	.long bufend, get, bufpos, set
 end
@@ -1199,7 +1168,7 @@ end
 
 word raise  # excp -- 
 	.long dup, get                 #  excp hndl
-	.long dup, zbranch, JUMP(1f)   #  excp hndl
+	.long dup, zbr,(1f)  #  excp hndl
 	.long nip, call, return
 1:
 	.long drop, labelForVar        #  lbl
@@ -1216,7 +1185,7 @@ string WarningColour, "[33m"
 string NoColour,      "[0m"
 
 word error
-	.long inChannel, get, isATTY, zbranch, JUMP(1f)
+	.long inChannel, get, isATTY, zbr,(1f)
 	.long clearInputBuffer, reset
 1:
 .long one, exit
@@ -1224,32 +1193,31 @@ word error
 
 # Numeric Output #######################################
 
+# : digit-to-char  dup 0 9 btw? ?[ '0' + ;] 'a' 10 - + ;
 word digit_to_char, "digit-to-char" # n -- c
 	.long dup 
-	.long zero, nine, between, zbranch, JUMP(1f)
-	.long asc_0, add
-	.long branch, JUMP(2f)
+	.long zero, nine, between, zbr,(1f)
+	.long asc_0, add, return
 1:
 	.long asc_a, ten, sub, add
-2:
 end
 word decompose  # n base -- 0 c ... 
 	.long push, zero, swap
 1:
 	.long peek, udivmod, digit_to_char, swap
-	.long dup, zbranch, JUMP(2f), branch, JUMP(1b)
+	.long dup, zbr,(2f), branch, JUMP(1b)
 2:
 	.long drop, trash
 end
 word putsign     # n -- u
-	.long dup, ltz, zbranch, JUMP(1f)
+	.long dup, ltz, zbr,(1f)
 	.long neg, asc_minus, putc
 1:
 end
 word putnumber   # n base --
 	.long decompose
 3:
-	.long putc, dup, zbranch, JUMP(4f), branch, JUMP(3b)
+	.long putc, dup, zbr,(4f), branch, JUMP(3b)
 4:
 	.long drop
 end
@@ -1294,7 +1262,7 @@ end
 
 word colour  #  colour -- 
 	.long push
-	.long outChannel, get, isATTY, zbranch, JUMP(1f)
+	.long outChannel, get, isATTY, zbr,(1f)
 	.long peek, puts
 1:
 	.long trash
@@ -1308,7 +1276,7 @@ word zopen   # zstr mode -- fh
 	.long swap, push, push
 	.long OpenPerms, pop, pop
 	.long SysOpen, syscall3
-	.long dup, zero, lt, zbranch, JUMP(1f)
+	.long dup, zero, lt, zbr,(1f)
 	.long drop, FileOpenFailed, raise
 1:
 end
@@ -1359,7 +1327,7 @@ variable CouldNotStatFile
 
 word statFD "stat-fd"
 	.long here, stash, swap, SysStat, syscall2
-	.long zero, lt, zbranch, JUMP(1f)
+	.long zero, lt, zbr,(1f)
 	.long CouldNotStatFile, raise
 1:
 	.long pop
@@ -1434,7 +1402,7 @@ word mmap  # fd flags prot len -- addr
 	.long push, push, push, push
 	#     offs  fd   flag prot len  addr
 	.long zero, pop, pop, pop, pop, zero, SysMmap, syscall6
-	.long dup, minus_two_hundred, minus_one, between, zbranch, JUMP(1f)
+	.long dup, minus_two_hundred, minus_one, between, zbr,(1f)
 	.long MmapFailed, raise
 1:
 end
@@ -1484,16 +1452,14 @@ word notFoundHandler "not-found-handler"  # str
 	.long puts, NoColour, colour, NotFound, puts, nl
 .long error
 
-word find // str -- xt behav
-	.long push  # save str
-	.long dictionary
-1:
-	.long get, dup, zbranch, JUMP(2f)
-	.long dup, label, peek, strEq
-	.long zbranch, JUMP(1b)
-	.long dup, cfa, swap, behaviour, trash, return
-2:
-	.long drop, pop, NotFoundException, raise
+	
+# : find  @ dup ?[ 2dup label streq ?[ nip dup cfa swap behavior ;] find ;] 2drop NotFoundException raise ;
+word find // str dict -- xt behav
+	.long get, dup, zbr,(2f)
+	.long over, over, label, strEq, zbr,(1f)
+	.long nip, dup, cfa, swap, behaviour, return
+1:	.long tc, find
+2:	.long drop, NotFoundException, raise
 end
 
 word lfa, ".lfa"  # entry -- addr
@@ -1590,7 +1556,7 @@ word colon, ":"
 .long tc, compiler
 
 word semicolon, ";", call
-	.long compile, return
+	.long compile,return
 	.long trash  # return to the interpreter loop that called compiler
 end
 
@@ -1602,25 +1568,25 @@ word resolve
 end
 
 word if, "?[", call
-	.long compile, zbr, mark
+	.long compile,zbr, mark
 end
 word endif, "]", call
 	.long resolve
 end
 word case, "=[", call
-	.long compile, over,  compile, eq,  compile, zbr,  mark
+	.long compile,over,  compile,eq,  compile,zbr,  mark
 end
 word endcase, ";]", call
-	.long compile, return,  resolve
+	.long compile,return,  resolve
 end
 
 word welcome
-	.long inChannel, get, isATTY, zbranch, JUMP(1f)
+	.long inChannel, get, isATTY, zbr,(1f)
 	.long WelcomeMessage, puts
 1:
 end
 word prompt
-	.long inChannel, get, isATTY, zbranch, JUMP(1f)
+	.long inChannel, get, isATTY, zbr,(1f)
 	.long nl, spc, putc, dsDepth, putn
 	.long asc_comma, putc, rsDepth, putn
 	.long promptText, get, puts
@@ -1633,12 +1599,12 @@ word compile
 end
 
 word compiler
-	.long word, find, call
+	.long word, dictionary, find, call
 .long tc, compiler
 
 word interpreter
 	.long prompt
-	.long word, find, drop, call
+	.long word, dictionary, find, drop, call
 .long tc, interpreter
 
 
