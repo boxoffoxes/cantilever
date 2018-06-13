@@ -505,6 +505,7 @@ literal zero, 0
 literal one,  1
 literal two,  2
 literal five, 5
+literal seven, 7
 literal nine, 9
 literal ten, 10
 literal sixteen, 16
@@ -533,7 +534,7 @@ prim mulDiv, "*/" // int int int -- int
 	mov %eax, (%esp)
 next
 
-prim udivmod, "u/mod" # int int -- int int
+prim udivmod, "u/mod" # nu de -- q r
 	pop %ebx
 	pop %eax
 	xor %edx, %edx
@@ -1106,6 +1107,12 @@ word not
 	.long minus_one, xor
 end
 
+#: abs ( n -- u ) dup 0< ?[ neg ] ;
+word abs
+	.long dup, ltz, zbr,(1f), neg
+1:
+end
+
 word pad
 	.long scratchpadAddr, get
 end
@@ -1199,71 +1206,66 @@ end
 
 #: digit ( u -- c ) 9 over < 7  and  + 48 + ;
 word digit
-	.long nine, over, seven, lt,  and,  add, asc_0, add
+	.long nine, over, lt, seven,  and,  add, asc_0, add
 end
-
-#: extract ( n base -- n c ) 0 swap um/mod swap digit ;
+#: extract ( n base -- n c ) 0 swap um/mod digit ;
 word extract
-	.long zero, swap, u/mod, swap, digit
-ned
-
+	.long udivmod, digit
+end
 #: <# ( -- ) pad hld ! ;
 word formatted, "<#"
 	.long pad, hld, set
 end
-
 #: hold ( b -- ) hld @ 1 - dup hld ! c! ;
 word hold
 	.long hld, get, one, sub, dup, hld, set, setb
 end
-
 #: #  ( u -- u ) base @ extract hold ;
 word holddigit, "#"
 	.long base, get, extract, hold
 end
-
 #: #s ( u -- 0 ) # dup ?[ #s ;] ;
 word holdint, "#s"
 	.long holddigit, dup, zbr,(1f), tc, holdint
 1:
 end
-
 #: sign ( n -- ) 0< ?[ '-' hold ] ;
 word sign
 	.long ltz, zbr,(1f), asc_minus, hold
 1:
 end
-
 #: #> ( w -- str len ) drop hld @ pad over - ;
 word unformatted "#>"
 	.long drop, hld, get, pad, over, sub
 end
-
 #: str ( n -- str len ) dup push abs <# #s pop sign #> ;
 word str
 	.long dup, push, abs, formatted, holdint, pop, sign, unformatted
 end
 
-word decompose  # n base -- 0 c ... 
-	.long push, zero, swap
-1:
-	.long peek, udivmod, digit_to_char, swap
-	.long dup, zbr,(2f), branch, JUMP(1b)
-2:
-	.long drop, trash
+#: u.  ( u -- ) <# #s #> space type ;
+word putu "u."
+	.long formatted, holdint, unformatted, put
 end
-word putsign     # n -- u
-	.long dup, ltz, zbr,(1f)
-	.long neg, asc_minus, putc
-1:
+#: . ( w -- ) base @ 10 xor ?[ u. ;] str type ;
+word putn "."
+	.long base, get, ten, xor, zbr,(1f), tc, putu
+1:	.long str, put
 end
-word putnumber   # n base --
-	.long decompose
-3:
-	.long putc, dup, zbr,(4f), branch, JUMP(3b)
-4:
-	.long drop
+word putx "x."
+	.long hex, putn, decimal
 end
+
+word hex
+	.long sixteen, base, set
+end
+word decimal
+	.long ten, base, set
+end
+word binary
+	.long two, base, set
+end
+
 
 # String output #########################################
 
@@ -1294,13 +1296,6 @@ end
 word putc  # c --
 	.long spGet, one, put
 	.long drop # drop on-stack buffer
-end
-
-word putn // n --
-	.long putsign, ten, putnumber
-end
-word putx // n --
-	.long sixteen, putnumber
 end
 
 word colour  #  colour -- 
@@ -1645,10 +1640,21 @@ word compiler
 	.long word, dictionary, find, call
 .long tc, compiler
 
+#: interpreter ( -- ) prompt word dictionary find drop call ;
 word interpreter
-	.long prompt
-	.long word, dictionary, find, drop, call
+	.long prompt, word, dictionary, find, drop, call
 .long tc, interpreter
+
+#: interpreter ( -- ) prompt word dictionary 
+#	find    ?[ call interpreter ;]
+#	number  ?[ interpreter ;]
+#	NotFoundException raise
+word interpreter2
+	.long prompt, word, dictionary
+	.long find,    zbr,(1f), call, tc,interpreter2
+1:	.long number,  zbr,(2f),       tc,interpreter2
+2:	.long NotFoundException, raise
+end
 
 
 .section .rodata
@@ -1681,6 +1687,8 @@ variable ds0
 variable rs0
 variable dp0
 variable dictPtr, ,"dict-ptr"
+variable hld
+variable base, 10
 
 variable NotFoundException, notFoundHandler
 
