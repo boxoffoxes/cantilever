@@ -1,4 +1,6 @@
 ASSEMBLER32=gcc -static -nostdlib -m32 -g 
+ASSEMBLER64=gcc -static -nostdlib -m64 -g
+ASSEMBLER=$(ASSEMBLER32)
 STEM=cantilever
 TARGET=$(STEM)
 # PROF_TARGET=$(STEM)-profile
@@ -18,7 +20,7 @@ sloc: $(TARGET).S
 	cat $< | grep -v '^\s*$$' | grep -v '^\s*#[^a-z]' | grep -v '^\s*//' | wc -l
 
 %: %.S
-	$(ASSEMBLER32) -o $@ $<
+	$(ASSEMBLER) -o $@ $<
 
 
 inc/sys_defs.h :

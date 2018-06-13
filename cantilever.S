@@ -41,10 +41,15 @@
 
 # Structural macros ##################################
 
-.set LFA_OFFS, (1*CELL_SIZE)
-.set BFA_OFFS, (2*CELL_SIZE)
-.set CFA_OFFS, (3*CELL_SIZE)
-.set PFA_OFFS, (4*CELL_SIZE)
+# proposed alternative dictionary format 
+#   ...optional fields | &next | &label | &behav | xt ...
+#                              ^ prev next-ptr
+
+.set DFA_OFFS, (0*CELL_SIZE)  # -1*CELL_SIZE
+.set LFA_OFFS, (1*CELL_SIZE)  # 0
+.set BFA_OFFS, (2*CELL_SIZE)  # 1*CELL_SIZE
+.set CFA_OFFS, (3*CELL_SIZE)  # 2*CELL_SIZE
+.set PFA_OFFS, (4*CELL_SIZE)  # 3*CELL_SIZE
 
 .macro header label, name, behav
 	.section .data
@@ -751,16 +756,6 @@ next
 
 # Memory copying prims ###############################
 
-prim copyBytes, "copy-bytes"  # from nbytes to --
-	mov %edi, %edx  # save DP
-	pushrs %esi      # save IP
-	pop %edi
-	pop %ecx
-	pop %esi
-	rep movsb
-	poprs %esi
-	mov %edx, %edi
-next
 prim copy, "copy" # from ncells to --
 	mov %edi, %edx # save DP
 	pushrs %esi
@@ -1193,7 +1188,7 @@ word error
 
 # Numeric Output #######################################
 
-# : digit-to-char  dup 0 9 btw? ?[ '0' + ;] 'a' 10 - + ;
+#: digit-to-char  dup 0 9 btw? ?[ '0' + ;] 'a' 10 - + ;
 word digit_to_char, "digit-to-char" # n -- c
 	.long dup 
 	.long zero, nine, between, zbr,(1f)
@@ -1201,6 +1196,54 @@ word digit_to_char, "digit-to-char" # n -- c
 1:
 	.long asc_a, ten, sub, add
 end
+
+#: digit ( u -- c ) 9 over < 7  and  + 48 + ;
+word digit
+	.long nine, over, seven, lt,  and,  add, asc_0, add
+end
+
+#: extract ( n base -- n c ) 0 swap um/mod swap digit ;
+word extract
+	.long zero, swap, u/mod, swap, digit
+ned
+
+#: <# ( -- ) pad hld ! ;
+word formatted, "<#"
+	.long pad, hld, set
+end
+
+#: hold ( b -- ) hld @ 1 - dup hld ! c! ;
+word hold
+	.long hld, get, one, sub, dup, hld, set, setb
+end
+
+#: #  ( u -- u ) base @ extract hold ;
+word holddigit, "#"
+	.long base, get, extract, hold
+end
+
+#: #s ( u -- 0 ) # dup ?[ #s ;] ;
+word holdint, "#s"
+	.long holddigit, dup, zbr,(1f), tc, holdint
+1:
+end
+
+#: sign ( n -- ) 0< ?[ '-' hold ] ;
+word sign
+	.long ltz, zbr,(1f), asc_minus, hold
+1:
+end
+
+#: #> ( w -- str len ) drop hld @ pad over - ;
+word unformatted "#>"
+	.long drop, hld, get, pad, over, sub
+end
+
+#: str ( n -- str len ) dup push abs <# #s pop sign #> ;
+word str
+	.long dup, push, abs, formatted, holdint, pop, sign, unformatted
+end
+
 word decompose  # n base -- 0 c ... 
 	.long push, zero, swap
 1:
@@ -1646,7 +1689,6 @@ string byebye, "\n-- Toodle-pip!\n"
 string TooLong, "Word too long: "
 string NotFound, " is neither a dictionary word nor a recognised number\n"
 string InvalidEsc, "Invalid escape char: "
-string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
 string ErrorUnhandled, "Unhandled exception: "
 string DefaultPrompt, " ok "
 
