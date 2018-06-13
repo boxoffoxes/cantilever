@@ -518,6 +518,7 @@ constant asc_a, 'a', "'a'"
 constant asc_minus, '-', "'-'"
 constant asc_comma, ',', "','"
 constant asc_spc, ' ', "'spc'"
+constant asc_nl, '\n', "'\n'"
 
 prim mul, "*"  // int int -- int
 	pop %eax
@@ -862,7 +863,7 @@ word number  #  str -- int bool
 	.long one, cell, add, znumber
 end
 
-prim znumber  # zstr -- int bool
+prim znumber  # zstr -- int bool 
 	# see if zstr conforms to one of the supported 
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %eax, %eax
@@ -1155,7 +1156,8 @@ word copys   # str addr --
 end
 
 word clearInputBuffer, "clear-input-buffer"
-	.long bufend, get, bufpos, set
+	.long key, asc_nl, eq, zbr,(1f), return
+1:	.long tc,clearInputBuffer
 end
 
 # Errors & Exception handling #################################
@@ -1253,7 +1255,7 @@ word putn "."
 1:	.long str, put
 end
 word putx "x."
-	.long hex, putn, decimal
+	.long base, get, swap, hex, putn, base, set
 end
 
 word hex
@@ -1491,13 +1493,13 @@ word notFoundHandler "not-found-handler"  # str
 .long error
 
 	
-# : find  @ dup ?[ 2dup label streq ?[ nip dup cfa swap behavior ;] find ;] 2drop NotFoundException raise ;
-word find // str dict -- xt behav
+# : find  @ dup ?[ 2dup label streq ?[ nip dup cfa swap behavior ;] find ;] ;
+word find // str dict -- xt bh | str 0
 	.long get, dup, zbr,(2f)
 	.long over, over, label, strEq, zbr,(1f)
 	.long nip, dup, cfa, swap, behaviour, return
 1:	.long tc, find
-2:	.long drop, NotFoundException, raise
+2:
 end
 
 word lfa, ".lfa"  # entry -- addr
@@ -1636,24 +1638,23 @@ word compile
 	.long pop, getStep, storeinc, push
 end
 
+#: compiler ( -- ) word dictionary find dup ?[ call compiler ;]
+#                  drop NotFoundException raise ;
 word compiler
-	.long word, dictionary, find, call
-.long tc, compiler
-
-#: interpreter ( -- ) prompt word dictionary find drop call ;
-word interpreter
-	.long prompt, word, dictionary, find, drop, call
-.long tc, interpreter
+	.long word, dictionary, find
+	.long dup, zbr,(1f), call, tc,compiler
+1:	.long drop, NotFoundException,raise
+end
 
 #: interpreter ( -- ) prompt word dictionary 
 #	find    ?[ call interpreter ;]
 #	number  ?[ interpreter ;]
 #	NotFoundException raise
-word interpreter2
+word interpreter
 	.long prompt, word, dictionary
-	.long find,    zbr,(1f), call, tc,interpreter2
-1:	.long number,  zbr,(2f),       tc,interpreter2
-2:	.long NotFoundException, raise
+	.long find,         zbr,(1f), call, tc,interpreter
+1:	.long dup, number,  zbr,(2f), nip,  tc,interpreter
+2:	.long drop, NotFoundException,raise
 end
 
 
