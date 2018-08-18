@@ -22,7 +22,7 @@
 
 .macro align_dp
 	add $(CELL_SIZE-1), %rdi
-	and $(~CELL_SIZE), %rdi
+	and $(~(CELL_SIZE-1)), %rdi
 .endm
 
 .globl _start
@@ -116,27 +116,71 @@ prim bool
 	dec %rcx
 	mov %rcx, %rbx
 next
-# prim lshift, "shift-up" // int n -- int
-# prim rshift, "shift-down" // int n -- int
-
-# prim mul, "*"  // int int -- int
+prim lshift, "shift-up" // int n -- int
+	mov %rbx, %rcx
+	pop %rbx
+	shl %cl, %rbx
+next
+prim rshift, "shift-down" // int n -- int
+	mov %rbx, %rcx
+	pop %rbx
+	sar %cl, %rbx
+next
+prim mul, "*"  // int int -- int
+	pop %rax
+	imul %rbx
+	mov %rax, %rbx
+next
 # prim mulDiv, "*/" // int int int -- int
-# prim udivmod, "/modu" # int int -- int int
-# prim divmod  "/mod" # int int -- int int
-# prim sub, "-" // int int -- int
-# prim add, "+" // int int -- int
-# prim neg
-# prim inc, "1+"
-# prim dec, "1-"
-# prim double, "2*"
+prim udivmod, "/modu" # n d -- q r
+	pop %rax
+	xor %rdx, %rdx
+	div %rbx
+	push %rax
+	mov %rdx, %rbx
+next
+prim divmod  "/mod" # n d -- q r
+	pop %rax
+	cqo
+	idiv %rbx
+	push %rax
+	mov %rdx, %rbx
+next
+prim sub, "-" // int int -- int
+	sub %rbx, (%rsp)
+	pop %rbx
+next
+prim add, "+" // int int -- int
+	add (%rsp), %rbx
+	pop %rax
+next
+prim neg
+	neg %rbx
+next
+prim inc, "1+"
+	inc %rbx
+next
+prim dec, "1-"
+	dec %rbx
+next
+prim double, "2*"
+	shl $1, %rbx
+next
 # prim min // int int -- int
 # prim max
 # prim umin // uint uint -- uint
 # prim umax
 # prim sumCells, "sum-cells"  # array count -- int
 
-# prim dspGet, "dsp@"
-# prim dspSet, "dsp!"
+prim dspGet, "dsp@"
+	push %rbx
+	mov %rsp, %rbx
+next
+prim dspSet, "dsp!"
+	# this is ugly, as ToS is stored in RBX
+	lea -CELL_SIZE(%rbx), %rsp
+	pop %rbx
+next
 # prim dsDepth, "ds-depth"
 
 prim drop
@@ -181,6 +225,9 @@ prim pop
 	push %rbx
 	poprs %rbx
 next
+prim stash
+	pushrs %rbx
+next
 prim trash
 	poprs %rax
 next
@@ -191,11 +238,15 @@ next
 # prim locals  # n -- 
 prim incVar "inc-var"
 	incq (%rbx)
+	pop %rbx
 next
 prim decVar "dec-var"
 	decq (%rbx)
 next
-# prim ipGet, "ip@"
+prim ipGet, "ip@"
+	push %rbx
+	mov %rsi, %rbx
+next
 prim get, "@"
 	mov (%rbx), %rbx
 next
@@ -252,10 +303,20 @@ prim return
 next
 # prim data  # -- addr
 # prim branch
-# prim zbranch   #  bool -- 
+prim zbranch   #  bool -- 
+	lodsq
+	lea -CELL_SIZE(%rsi, %rax), %rax
+	test %rbx, %rbx
+	cmovz %rax, %rsi
+	pop %rbx
+next
 # prim tailcall, "tail:"
 # prim tailcallTOS, "tailcall-tos"
-# prim call  # xt --
+prim call  # xt --
+	mov %rbx, %rax
+	pop %rbx
+	jmp *(%rax)
+next
 # prim inline   # xt --
 prim lit
 prim quote, "'"
@@ -263,7 +324,16 @@ prim quote, "'"
 	lodsq
 	mov %rax, %rbx
 next
-# prim copyBytes, "copy-bytes"  # from nbytes to --
+prim copyBytes, "copy-bytes"  # from nbytes to --
+	xchg %rdi, %rbx
+	mov %rsi, %r10
+	pop %rcx
+	pop %rsi
+	rep movsb
+	mov %r10, %rsi
+	mov %rbx, %rdi
+	pop %rbx
+next
 # prim copy, "copy" # from ncells to --
 # prim keep  # addr len -- addr
 # prim forget  # cfa -- 
