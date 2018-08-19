@@ -1,5 +1,5 @@
-ASSEMBLER32=gcc -static -nostdlib -m32 -g 
-ASSEMBLER64=gcc -static -nostdlib -m64 -g
+ASSEMBLER32=gcc -static -nostdlib -m32 -g
+ASSEMBLER64=gcc -static -nostdlib -m64 -g  # -nopie
 STEM=cantilever
 TARGET=$(STEM)
 TARGET64=cantilever64
@@ -17,7 +17,7 @@ test64: testprims
 #	./cantilever64 core.clvr test-library.clvr core-tests.clvr
 	./testprims ; echo $$?
 
-testprims : testprims.S prims64.S
+testprims : testprims.S cantilever64.S
 	$(ASSEMBLER64) -o $@ $<
 
 Misc/all-words : $(TARGET) foundation.clvr

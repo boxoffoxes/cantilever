@@ -1,21 +1,6 @@
-#include <sys/syscall.h>
+#define CANTILEVER_TEST_HARNESS
 
-.set CELL_BITS, 3
-.set CELL_SIZE, (1<<CELL_BITS)
-.set DS_SIZE, 4096
-
-#ifdef __OpenBSD__
-.section ".note.openbsd.ident", "a"
-        .p2align 2
-        .long   8
-        .long   4
-        .long   1
-        .ascii "OpenBSD\0"
-        .long   0
-        .p2align 2
-.section .text
-#endif
-
+/* 
 .macro prim label name
 .section .data
 	.align CELL_SIZE
@@ -45,8 +30,9 @@ var_\label: .quad \value
 \label:     .quad doconst
 var_\label: .quad \value
 .endm
+*/ 
 
-#include "prims64.S"
+#include "cantilever64.S"
 
 .macro testprim word n
 	# must not change CPU flags
@@ -96,12 +82,44 @@ start_of_tests:
 # word
 # match
 # between
+	pushds $7
+	pushds $-10
+	pushds $10
+	testprim between
+	expect $-1
+	check_stack
 # eq
+	pushds $10
+	pushds $11
+	testprim eq 1
+	expect $0
+	check_stack
+	pushds $10
+	pushds $10
+	testprim eq 2
+	expect $-1
+	check_stack
 # neq
 # ge
 # gt
 # le
 # lt
+	pushds $10
+	pushds $11
+	testprim lt 1
+	expect $-1
+	check_stack
+	pushds $10
+	pushds $10
+	testprim lt 2
+	expect $0
+	check_stack
+	pushds $10
+	pushds $9
+	testprim lt 3
+	expect $0
+	check_stack
+
 # and
 	pushds $0xff0
 	pushds $0x07f
@@ -219,9 +237,49 @@ start_of_tests:
 	expect $-26
 	check_stack
 # min
+	pushds $17
+	pushds $33
+	testprim min 1
+	expect $17
+	check_stack
+	pushds $17
+	pushds $-33
+	testprim min 2
+	expect $-33
+	check_stack
 # max
+	pushds $17
+	pushds $33
+	testprim max 1
+	expect $33
+	check_stack
+	pushds $17
+	pushds $-33
+	testprim max 2
+	expect $17
+	check_stack
 # umin
+	pushds $17
+	pushds $33
+	testprim umin 1
+	expect $17
+	check_stack
+	pushds $17
+	pushds $-33
+	testprim umin 2
+	expect $17
+	check_stack
 # umax
+	pushds $17
+	pushds $33
+	testprim umax 1
+	expect $33
+	check_stack
+	pushds $17
+	pushds $-33
+	testprim umax 2
+	expect $-33
+	check_stack
 # sumCells
 # dspGet
 	testprim dspGet
@@ -292,17 +350,17 @@ start_of_tests:
 # local
 # locals
 # incVar
-	movq $999, buffer
-	pushds $buffer
+	movq $999, testbuf
+	pushds $testbuf
 	testprim incVar
-	cmpq $1000, buffer
+	cmpq $1000, testbuf
 	jne fail
 	check_stack
 # decVar
-	pushds $buffer
+	pushds $testbuf
 	testprim decVar
-	expect $buffer
-	cmpq $999, buffer
+	expect $testbuf
+	cmpq $999, testbuf
 	jne fail
 	check_stack
 # ipGet
@@ -310,39 +368,39 @@ start_of_tests:
 	expect $(900b+8)
 	check_stack
 # get
-	movq $-919, buffer
-	pushds $buffer
+	movq $-919, testbuf
+	pushds $testbuf
 	testprim get
 	expect $-919
 	check_stack
 # getByte
-	movb $0xf3, buffer
-	pushds $buffer
+	movb $0xf3, testbuf
+	pushds $testbuf
 	testprim getByte
 	expect $0xf3
 	check_stack
 # getStep
 # set
 	pushds $-7721
-	pushds $buffer
+	pushds $testbuf
 	testprim set
-	mov buffer, %r10
+	mov testbuf, %r10
 	cmp $-7721, %r10
 	check_stack
 # setByte
 	pushds $0x99
-	pushds $buffer
+	pushds $testbuf
 	testprim setByte
-	cmpb $0x99, buffer
+	cmpb $0x99, testbuf
 	check_stack
 # dpGet
 	testprim dpGet
 	expect %rdi
 	check_stack
 # dpSet
-	pushds $buffer
+	pushds $testbuf
 	testprim dpSet
-	cmp $buffer, %rdi
+	cmp $testbuf, %rdi
 	jne fail
 	check_stack
 # here
@@ -385,6 +443,19 @@ start_of_tests:
 	expect $(5*CELL_SIZE)
 	check_stack
 # align
+	pushds $0
+	testprim align 0
+	expect $0
+	check_stack
+	pushds $1
+	testprim align 1
+	expect $8
+	check_stack
+	pushds $7
+	testprim align 2
+	expect $8
+	check_stack
+
 # isAnonymous
 # endcol
 # return
@@ -404,8 +475,13 @@ test_data: .quad do, data,24, dec,dec,dec, swap,dec,endcol
 .section .data
 .align CELL_SIZE
 test_zbranch: .quad do, zbranch,16, dec, endcol
+test_branch:  .quad do, branch,16, dec, inc, endcol
 .section .text
 # branch
+	pushds $376
+	testprim test_branch
+	expect $377
+ 	check_stack
 # zbranch
 	pushds $53
 	pushds $0
@@ -428,9 +504,10 @@ test_zbranch: .quad do, zbranch,16, dec, endcol
 
 .section .data
 .align CELL_SIZE
-never_return: .quad do, dec, endcol
-test_tail:    .quad do, tailcall,never_return, dec, endcol
-test_tailtos: .quad do, quote,never_return, tailcallTOS, dec, endcol
+decrement:    .quad do, dec, endcol
+test_call:    .quad do, quote,decrement, call, endcol
+test_tail:    .quad do, tailcall,decrement, dec, endcol
+test_tailtos: .quad do, quote,decrement, tailcallTOS, dec, endcol
 .section .text
 # tailcall
 	pushds $77
@@ -438,12 +515,13 @@ test_tailtos: .quad do, quote,never_return, tailcallTOS, dec, endcol
 	expect $76
 	check_stack
 # tailcallTOS
-	push $189
+	pushds $189
 	testprim test_tailtos
 	expect $188
 	check_stack
 # call
 	# non-prim words
+	pushds $0xabcdf
 	pushds $test_call
 	testprim call 1
 	expect $0xabcde
@@ -622,13 +700,11 @@ stackfail:
 	
 test_ifzero:
 	# .quad do, ifzero,inc, return
-test_call:
-	.quad do, quote, 0xabcde, return
 test_consume:
 	.quad do, quote, 0x0f0f0f, return
 rpt:
 	# .quad do, repeat,inc, return
 
 .lcomm vrbl CELL_SIZE
-.lcomm buffer 4096
+.lcomm testbuf 4096
 

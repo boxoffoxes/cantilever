@@ -1,50 +1,47 @@
-#include <asm/unistd.h>
-// #include <bits/socket.h>
+#include <sys/syscall.h>
+#ifdef __OpenBSD__
+.section ".note.openbsd.ident", "a"
+        .p2align 2
+        .long   8
+        .long   4
+        .long   1
+        .ascii "OpenBSD\0"
+        .long   0
+        .p2align 2
+.section .text
+#include <sys/mman.h>
+#else
 #include <asm/mman.h>
-// #include "inc/sys_defs.h"
+#endif
 
-# Warnings: be very careful about using push 
-# and pop in non-Forth functions -- there's a
-# return address on top of the stack!
+# Register allocation:
+#   %rbx : Top of stack
+#   %rsp : Data stack pointer
+#   %rbp : Return stack pointer
+#   %rsi : Instruction pointer
+#   %rdi : Dictionary pointer
 
-# Useful values ######################################
+#define JUMP(tgt) (tgt - .)
+#define DATA .quad
+
 .set HEAP_SIZE, 128*1024*1024  # 128 meg
 .set SCRATCH_SIZE, 16*1024     # 16k
-.set BUFFER_SIZE,  16*1024     #  4k
+.set BUFFER_SIZE,  16*1024     # 16k
 .set WORD_BUFFER_SIZE, 256
 .set FLAG_TABLE_SIZE, (127-32) # non-space ASCII chars
 .set CELL_BITS, 3
 .set CELL_SIZE, (1<<CELL_BITS)
-.set DS_SIZE, (64*CELL_SIZE)
+.set DS_SIZE, 4096
 .set link, 0
 
 .set BASE_4_YEAR, 1461
 .set LILIAN_CORRECTION, 6345
-
-// #define CANTILEVER_COMPILATION_TRACE
-//#define CANTILEVER_EXECUTION_TRACE
-// #define CANTILEVER_STACK_TRACE
-// #define CANTILEVER_CHEAP_DATE
-
 
 #ifdef CANTILEVER_EXECUTION_TRACE
 #define TRACE_CODE call _trace
 #else
 #define TRACE_CODE
 #endif
-
-
-######################################################
-# macros                                             #
-######################################################
-
-#define JUMP(tgt) (tgt - .)
-
-#define DATA .quad
-#define ToS %rbx
-
-
-# Structural macros ##################################
 
 .set LFA_OFFS, (1*CELL_SIZE)
 .set BFA_OFFS, (2*CELL_SIZE)
@@ -111,23 +108,13 @@ str_text_\label:
 	20001:
 	.align CELL_SIZE, 0
 .endm
-
-# Code macros ########################################
-
 .macro next
-	mov (%rsi), %rax
-	add $CELL_SIZE, %rsi
+	lodsq
 	jmp *(%rax)
-	.align CELL_SIZE
 .endm
 
 .macro end
 	DATA endcol
-.endm
-
-.macro string_len_in_cells reg
-	shr $CELL_BITS, \reg
-	inc \reg
 .endm
 
 .macro pushrs reg
@@ -135,14 +122,14 @@ str_text_\label:
 	movq \reg, (%rbp)
 .endm
 
-.macro poprs, reg
+.macro poprs reg
 	mov (%rbp), \reg
 	lea CELL_SIZE(%rbp), %rbp
 .endm
 
 .macro align_dp
 	add $(CELL_SIZE-1), %rdi
-	and $(0-CELL_SIZE), %rdi
+	and $(~(CELL_SIZE-1)), %rdi
 .endm
 
 .macro times_ten reg
@@ -162,18 +149,11 @@ str_text_\label:
 	ja \err
 .endm
 
-######################################################
-# C-style functions                                  #
-######################################################
-
-# Initialisation #####################################
 
 .section .data
 constant HeapBaseAddr . "heap-base-addr"
 
-
 .section .text
-
 .globl _start
 .align CELL_SIZE
 _start:
@@ -183,7 +163,7 @@ _start:
 	lea CELL_SIZE(%rsp), %rax
 	mov %rax, var_argv
 	mov %rax, var_argv0
-	mov $0xd50d50d50d50d50, ToS
+	mov $0xd50d50, %rbx
 	mov %rsp, var_ds0
 	mov %rsp, %rbp
 	sub $DS_SIZE, %rbp
@@ -191,28 +171,26 @@ _start:
 	mov $cold_start, %rsi
 next
 
-# Utility function ###################################
-
 .align CELL_SIZE
 _fill_buffer:
 	# ToS has been preserved before we were called
-	mov $__NR_read, %rax
-	mov var_inChannel, ToS
+	mov $SYS_read, %rax
+	mov var_inChannel, %rbx
 	mov var_ioBuffer, %rcx
 	mov %rcx, var_bufpos  // reset buffer position
 	mov $BUFFER_SIZE, %rdx
-	int $0x80
+	syscall
 	test %rax, %rax
 	jbe _eof
 	add %rax, %rcx
 	mov %rcx, var_bufend
 	// fallthrough
-.align CELL_SIZE
+.align CELL_SIZE, 0x90
 _key:  # leaves result on ToS
 	mov var_bufpos, %rdx
 	cmp var_bufend, %rdx
 	jae _fill_buffer
-	movzbl (%rdx), ToS
+	movzbq (%rdx), %rbx
 	inc %rdx
 	mov %rdx, var_bufpos
 ret
@@ -227,37 +205,6 @@ _eof:
 	pop %rax   # the function that called _key or _word had already pushed ToS
 	mov $_eof_wrap, %rsi
 next
-
-#ifdef CANTILEVER_EXECUTION_TRACE
-_space_buffer:
-	.space 128, ' '
-.align CELL_SIZE
-_trace:
-	# print spaces based on return stack depth
-	push %rax
-	mov var_rs0, %rdx
-	mov $2, ToS
-	mov $__NR_write, %rax
-	mov $_space_buffer, %rcx
-	sub %rbp, %rdx
-	int $0x80
-	# print function name
-	mov (%rsp), %rax
-	mov (LFA_OFFS-CFA_OFFS)(%rax), %rcx
-	mov (%rcx), %rdx
-	add $CELL_SIZE, %rcx
-	mov $__NR_write, %rax
-	int $0x80
-	# print return char
-	mov $__NR_write, %rax
-	push $10
-	mov %rsp, %rcx
-	mov $1, %rdx
-	int $0x80
-	pop %rcx
-	pop %rax
-ret
-#endif
 
 .align CELL_SIZE
 _word:  // copy the next word into wordbuffer
@@ -278,7 +225,7 @@ _word:  // copy the next word into wordbuffer
 	cmpb $' ', %bl
 	ja 1b
 	movq $0, CELL_SIZE(%rdx)  // add two words of nulls after word
-	//mov $0, 8(%rdx)
+	//mov $0, 8(%edx)
 	// populate the length field of the buffer
 	movq $0, (%rdx)
 	sub $wordbuffer_text, %rdx
@@ -286,18 +233,20 @@ _word:  // copy the next word into wordbuffer
 ret
 2:  # TODO: THIS MAY BE BORKED!
 	// TODO: should skip the rest of the long word too...
-	movq $0x202e2e2e, wordbuffer+12 // truncate the long word with "... "
-	movq $12, wordbuffer
-	movq $wordbuffer, (%rbp)  // over-write our return address
+	movl $0x202e2e2e, wordbuffer+12 // truncate the long word with "... "
+	movl $12, wordbuffer
+	movl $wordbuffer, (%ebp)  // over-write our return address
 	push $str_TooLong
 	# handle error. Was function, but used only here
-	mov $_error_wrap, %rsi
+	mov $_error_wrap, %esi
 next
 
 # Wrappers for calling words from code ###############
+#ifndef CANTILEVER_TEST_HARNESS
 .align CELL_SIZE
 cold_start:
 	DATA initialiseVM
+#endif
 
 .align CELL_SIZE
 _error_wrap:
@@ -307,753 +256,506 @@ _error_wrap:
 _eof_wrap:
 	DATA EndOfFile, raise, tailcall, reset
 
-######################################################
-# Forth-style code words                             #
-######################################################
-
-# codewords ##########################################
 
 .align CELL_SIZE
 do:
-TRACE_CODE
-	pushrs %rsi  // save return address
+	pushrs %rsi
 	lea CELL_SIZE(%rax), %rsi
 next
-
-.align CELL_SIZE
-doconst:
-	push ToS
-	mov CELL_SIZE(%rax), ToS
-TRACE_CODE
-next
-
 .align CELL_SIZE
 dovar:
-	push ToS
-	lea CELL_SIZE(%rax), ToS
-TRACE_CODE
+	push %rbx
+	lea CELL_SIZE(%rax), %rbx
 next
-
-
-# The black-magic of forth: data with behaviour.
-#
-# ... | dodoes | behav | data ...
-#
-# A more typical implementation would have been:
-# 
-# ... | dodoes | ptr | data ... | behav
-#                  \______________7
-#
-# but we remove the indirection as we have anonymous functions
-#
+.align CELL_SIZE
+doconst:
+	push %rbx
+	mov CELL_SIZE(%rax), %rbx
+next
 .align CELL_SIZE
 dodoes:
-	push ToS
+	push %rbx
 	pushrs %rsi
-	lea (2*CELL_SIZE)(%rax), ToS
+	lea (2*CELL_SIZE)(%rax), %rbx
 	mov CELL_SIZE(%rax), %rsi
 next
 
-# System calls #######################################
 
-# System call numbers
-constant SysExit,  __NR_exit
-constant SysRead,  __NR_read
-constant SysWrite, __NR_write
-constant SysOpen,  __NR_open
-constant SysClose, __NR_close
-constant SysStat,  __NR_fstat
-constant SysMmap,  __NR_mmap
-constant SysMunmap, __NR_munmap
-constant SysBrk,   __NR_brk
-constant SysIOCtl, __NR_ioctl
-constant SysTime,  __NR_time
-constant SysNanosleep, __NR_nanosleep
 
-# prims
 prim syscall0  # id -- result
-	mov ToS, %rax
-	int $0x80
-	mov %rax, ToS
+	mov %rbx, %rax
+	syscall
+	mov %rax, %rbx
 next
 prim syscall1  # arg id -- result
-	mov ToS, %rax
-	pop ToS
-	int $0x80
-	mov %rax, ToS
+	mov %rdi, %r11
+	mov %rbx, %rax
+	pop %rdi
+	syscall
+	mov %rax, %rbx
+	mov %r11, %rdi
 next
 prim syscall2  # arg2 arg1 id -- result
-	mov ToS, %rax
-	pop ToS
-	pop %rcx
-	int $0x80
-	mov %rax, ToS
+	mov %rdi, %r11
+	mov %rsi, %r12
+	mov %rbx, %rax
+	pop %rdi
+	pop %rsi
+	syscall
+	mov %rax, %rbx
+	mov %r12, %rsi
+	mov %r11, %rdi
 next
 prim syscall3  # arg3 arg2 arg1 id -- result
-	mov ToS, %rax
-	pop ToS
-	pop %rcx
+	mov %rdi, %r11
+	mov %rsi, %r12
+	mov %rbx, %rax
+	pop %rdi
+	pop %rsi
 	pop %rdx
-	int $0x80
-	mov %rax, ToS
+	syscall
+	mov %rax, %rbx
+	mov %r12, %rsi
+	mov %r11, %rdi
 next
-
 prim syscall6  # arg6 arg5 ... arg1 id -- result
-	# This is slightly different because for >5 args
-	# Linux expects args to be passed by pointer.
-	# In this case we simply use the stack
-	mov ToS, %rax
-	mov %rsp, ToS
-	int $0x80
-	add $(6*CELL_SIZE), %rsp
-	mov %rax, ToS
+	mov %rdi, %r11
+	mov %rsi, %r12
+	mov %rbx, %rax
+	pop %rdi
+	pop %rsi
+	pop %rdx
+	pop %r10
+	pop %r8
+	pop %r9
+	syscall
+	mov %rax, %rbx
+	mov %r12, %rsi
+	mov %r11, %rdi
 next
-
-# IO prims ###########################################
-
-# basic IO
-constant stdin,  0
-constant stdout, 1
-constant stderr, 2
-
-variable inChannel, 0, "in-channel"
-variable outChannel, 1, "out-channel"
-variable errChannel, 2, "err-channel"
-
-# NOTE: values are octal!
-constant ReadOnly,   0
-constant WriteOnly,  01101
-constant ReadWrite,  02202
-
 prim key   # -- c
-	push ToS
+	push %rbx
 	call _key
 next
-
 prim word  # -- str
-	push ToS
+	push %rbx
 	call _word
-	// push the address of temporary buffer
-	mov $wordbuffer, ToS
+	mov $wordbuffer, %rbx
 next
-
-# Logical and bitwise prims ##########################
-
-constant true, -1
-constant false, 0
-
-prim match "matches?" # n1 n2 -- n1 bool
-	# semi-destructive equals for pattern matching
-	xor %rax, %rax
-	cmp (%rsp), ToS
-	setne %al
-	dec %rax
-	mov %rax, ToS
-next
-
-prim between "btw?"  # n lower upper -- bool
+# prim match "matches?" # n1 n2 -- n1 bool
+prim between "btw?"  # n lower upper -- 
 	pop %rcx  # lower
 	pop %rax  # n
-	sub %rcx, ToS  # upper-lower
+	sub %rcx, %rbx  # upper-lower
 	sub %rcx, %rax  # n-lower
 	xor %rcx, %rcx  
-	cmp ToS, %rax
+	cmp %rbx, %rax
 	seta %cl
 	dec %rcx
-	mov %rcx, ToS
+	mov %rcx, %rbx
 next
+
+
 
 prim eq, "=" // a b -- bool
 	pop %rax
 	xor %rcx, %rcx
-	cmp %rax, ToS
+	cmp %rax, %rbx
 	setne %cl
 	dec %rcx
-	mov %rcx, ToS
+	mov %rcx, %rbx
 next
-prim neq, "<>" // a b -- bool
-	pop %rax
-	xor %rcx, %rcx
-	cmp %rax, ToS
-	sete %cl
-	dec %rcx
-	mov %rcx, ToS
+word neq, "<>" // a b -- bool
+	DATA eq, not
 next
-prim ge, ">="
-	pop %rdx
-	xor %rcx, %rcx
-	cmp ToS, %rdx
-	setl %cl
-	dec %rcx
-	mov %rcx, ToS
+# prim ge, ">="
 next
-prim gt, ">"
-	pop %rdx
-	xor %rcx, %rcx
-	cmp ToS, %rdx
-	setle %cl
-	dec %rcx
-	mov %rcx, ToS
+# prim gt, ">"
 next
-prim le, "<="
-	pop %rdx
-	xor %rcx, %rcx
-	cmp ToS, %rdx
-	setg %cl
-	dec %rcx
-	mov %rcx, ToS
-next
+# prim le, "<="
 prim lt, "<"
 	pop %rax
 	xor %rcx, %rcx
-	cmp ToS, %rax
+	cmp %rbx, %rax
 	setge %cl
 	dec %rcx
-	mov %rcx, ToS
+	mov %rcx, %rbx
 next
 
+
 prim and
+	and (%rsp), %rbx
 	pop %rax
-	and %rax, ToS
 next
 prim or
+	or (%rsp), %rbx
 	pop %rax
-	or %rax, ToS
 next
 prim xor
+	xor (%rsp), %rbx
 	pop %rax
-	xor %rax, ToS
 next
 prim not
-	not ToS
+	not %rbx
 next
 
 prim bool
-	xor %rax, %rax
-	test ToS, ToS
-	setz %al
-	dec %rax
-	mov %rax, ToS
+	xor %rcx, %rcx
+	test %rbx, %rbx
+	setnz %cl
+	dec %rcx
+	mov %rcx, %rbx
 next
-
 prim lshift, "shift-up" // int n -- int
-	mov ToS, %rcx
-	pop ToS
-	shl %cl, ToS
+	mov %rbx, %rcx
+	pop %rbx
+	shl %cl, %rbx
 next
 prim rshift, "shift-down" // int n -- int
-	mov ToS, %rcx
-	pop ToS
-	sar %cl, ToS
+	mov %rbx, %rcx
+	pop %rbx
+	sar %cl, %rbx
 next
-
-# Arithmetic prims ###################################
-
-constant zero, 0, "0"
-constant one,  1, "1"
-constant minus_one, -1 "-1"
-
 prim mul, "*"  // int int -- int
 	pop %rax
-	imul ToS
-	mov %rax, ToS
-	// TODO: check for overflow
+	imul %rbx
+	mov %rax, %rbx
 next
-
-prim mulDiv, "*/" // int int int -- int
-	mov ToS, %rcx
-	pop %rax
-	imull (%rsp)
-	idiv %rcx
-	mov %rax, ToS
-next
-
-prim udivmod, "/modu" # int int -- int int
+# prim mulDiv, "*/" // int int int -- int
+prim udivmod, "/modu" # n d -- q r
 	pop %rax
 	xor %rdx, %rdx
-	div ToS
-	mov %rdx, ToS
+	div %rbx
 	push %rax
+	mov %rdx, %rbx
 next
-prim divmod  "/mod" # int int -- int int
+prim divmod  "/mod" # n d -- q r
 	pop %rax
-	cdq  // sign-extend %rax into %rdx
-	idiv ToS
-	mov %rdx, ToS
+	cqo
+	idiv %rbx
 	push %rax
+	mov %rdx, %rbx
 next
-
 prim sub, "-" // int int -- int
-	pop %rax
-	sub ToS, %rax
-	mov %rax, ToS
+	sub %rbx, (%rsp)
+	pop %rbx
 next
 prim add, "+" // int int -- int
+	add (%rsp), %rbx
 	pop %rax
-	add %rax, ToS
 next
-
 prim neg
-	neg ToS
+	neg %rbx
 next
-
 prim inc, "1+"
-	inc ToS
+	inc %rbx
 next
 prim dec, "1-"
-	dec ToS
+	dec %rbx
 next
-
 prim double, "2*"
-	shl $1, ToS
+	shl $1, %rbx
 next
-
 prim min // int int -- int
 	pop %rax
-	cmp %rax, ToS
-	jl 1f
-	mov %rax, ToS
-1:
+	cmp %rax, %rbx
+	cmovg %rax, %rbx
 next
 prim max
 	pop %rax
-	cmp %rax, ToS
-	jg 1f
-	mov %rax, ToS
-1:
+	cmp %rax, %rbx
+	cmovl %rax, %rbx
 next
-
 prim umin // uint uint -- uint
 	pop %rax
-	cmp %rax, ToS
-	jb 1f
-	mov %rax, ToS
-1:
+	cmp %rax, %rbx
+	cmova %rax, %rbx
 next
 prim umax
 	pop %rax
-	cmp %rax, ToS
-	ja 1f
-	mov %rax, ToS
-1:
+	cmp %rax, %rbx
+	cmovb %rax, %rbx
 next
-
-prim sumCells, "sum-cells"  # array count -- int
-	mov ToS, %rcx
-	pop %rdx
-	xor %rax, %rax
-1:
-	test %rcx, %rcx
-	jz 2f
-	dec %rcx
-	add %rdx, %rax
-	jmp 1b
-2:
-	mov %rax, ToS
-next
-
-# Data Stack manipulation prims ######################
+# prim sumCells, "sum-cells"  # array count -- int
+	# sumCells is not used
 
 prim dspGet, "dsp@"
-	push ToS
-	mov %rsp, ToS
+	push %rbx
+	mov %rsp, %rbx
 next
 prim dspSet, "dsp!"
-	mov ToS, %rsp
-	pop ToS
+	# this is ugly, as ToS is stored in RBX
+	lea -CELL_SIZE(%rbx), %rsp
+	pop %rbx
 next
 prim dsDepth, "ds-depth"
-	push ToS
-	mov var_ds0, ToS
-	sub %rsp, ToS
-	sar $CELL_BITS, ToS
-	dec ToS  # because ToS is in a register
+	push %rbx
+	mov var_ds0, %rbx
+	sub %rsp, %rbx
+	sar $CELL_BITS, %rbx
+	dec %rbx  # because of the sentinel
 next
 
 prim drop
-	pop ToS
+	pop %rbx
 next
 prim nip
-	lea CELL_SIZE(%rsp), %rsp
+	pop %rax
 next
 prim swap  // a b -- b a
-	xchg ToS, (%rsp)
+	xchg %rbx, (%rsp)
 next
 prim dup
-	push ToS
+	push %rbx
 next
-crash:
-	xor %rax, %rax
-	mov (%rax), %rax
 prim over
-	push ToS
-	mov CELL_SIZE(%rsp), ToS
+	push %rbx
+	mov CELL_SIZE(%rsp), %rbx
 next
-
-# Return stack prims #################################
-
 prim rspGet, "rsp@"
-	push ToS
-	mov %rbp, ToS
+	push %rbx
+	mov %rbp, %rbx
 next
 prim rspSet, "rsp!"
-	mov ToS, %rbp
-	pop ToS
+	mov %rbp, %rbx
+	pop %rax
 next
 prim rsDepth, "rs-depth"
-	push ToS
-	mov var_rs0, ToS
-	sub %rbp, ToS
-	sar $CELL_BITS, ToS
+	push %rbx
+	mov var_rs0, %rbx
+	sub %rbp, %rbx
+	sar $CELL_BITS, %rbx
 next
-
 prim push
-	pushrs ToS
-	pop ToS
+	pushrs %rbx
+	pop %rbx
 next
 prim peek
-	push ToS
-	mov (%rbp), ToS
+	push %rbx
+	mov (%rbp), %rbx
 next
 prim pop
-	push ToS
-	poprs ToS
+	push %rbx
+	poprs %rbx
 next
 prim stash
-	pushrs ToS
+	pushrs %rbx
 next
 prim trash
 	poprs %rax
 next
-
-prim wlen  #  addr -- n-cells
-	# -1 means a primitive or other non-inlinable word
-	# otherwise returns the length in cells of the word
-	mov $-1, %rcx
-	mov %rsi, %rdx
-	mov ToS, %rsi
-	lodsl
-	cmp $do, %rax
-	jne 2f
-	mov $endcol, %rax
-	xchg %rsi, %rdi
-	repne scasl
-	xchg %rsi, %rdi
-	not %rcx
-	dec %rcx
-2:
-	mov %rdx, %rsi
-	mov %rcx, ToS
-next
-
-variable curframe
-prim frame
-	mov curframe, %rax
-	pushrs %rax
-	mov %rbp, curframe
-next
+# prim wlen  #  addr -- n-cells
+	# wlen is not used
+# prim frame
+	# frame is not used
 prim unframe
 	mov curframe, %rbp
 	poprs %rax
 	mov %rax, curframe
 next
 prim local, "$$"  # n -- addr
-	# get cell n of current frame
-	not ToS
+	not %rbx
 	mov curframe, %rax
-	lea (%rax, ToS, CELL_SIZE), %rdx
-	mov %rdx, ToS
+	lea (%rax, %rbx, CELL_SIZE), %rbx
 next
 prim locals  # n -- 
-	# create a frame with n local variables
 	mov curframe, %rax
 	pushrs %rax
 	mov %rbp, curframe
-	mov ToS, %rcx
-1:
-	test %rcx, %rcx
+	mov %rbp, %rcx
+1:	test %rcx, %rcx
 	jz 2f
 	pop %rax
 	dec %rcx
 	pushrs %rax
 	jmp 1b
-2:
-	pushrs $do_unframe
-	pop ToS
+2:	pushrs $do_unframe
+	pop %rbx
 next
-prim incVar "inc-var"
-	incl (ToS)
-	pop ToS
-next
-prim decVar "dec-var"
-	decl (ToS)
-	pop ToS
-next
-
 do_unframe:
 	DATA unframe, return
-
-# Instruction pointer ################################
-
-prim ipGet, "ip@"
-	push ToS
-	mov %rsi, ToS
+prim incVar "inc-var"
+	incq (%rbx)
+	pop %rbx
 next
-
-# Memory access ######################################
-
+prim decVar "dec-var"
+	decq (%rbx)
+next
+prim ipGet, "ip@"
+	push %rbx
+	mov %rsi, %rbx
+next
 prim get, "@"
-	mov (ToS), ToS
+	mov (%rbx), %rbx
 next
 prim getByte, "@b"
-	movzbl (ToS), ToS
+	movzbq (%rbx), %rbx
 next
-
 prim getStep "@+"  # addr -- addr' n
-	mov (ToS), %rax
-	add $CELL_SIZE, ToS
-	push ToS
-	mov %rax, ToS
+	lea CELL_SIZE(%rbx), %rax
+	mov (%rbx), %rbx
+	push %rax
 next
-
 prim set "!" # int addr -- 
-	pop %rax
-	mov %rax, (ToS)
-	pop ToS
+	pop (%rbx)
+	pop %rbx
 next
 prim setByte "!b" # int addr -- 
-	pop %rdx
-	mov %dl, (ToS)
-	pop ToS
+	pop %rax
+	movb %al, (%rbx)
+	pop %rbx
 next
-
+prim here
 prim dpGet, "dp@"
-	push ToS
-	mov %rdi, ToS
+	push %rbx
+	mov %rdi, %rbx
 next
 prim dpSet, "dp!"
-	mov ToS, %rdi
-	pop ToS
+	mov %rbx, %rdi
+	pop %rbx
 next
-
-prim here
-	push ToS
-	mov %rdi, ToS
-next
-
 prim dpAlign, "align-dp"
 	align_dp
 next
-
 prim storeinc, ","
-	mov ToS, (%rdi)
-	lea 4(%rdi), %rdi
-	pop ToS
+	mov %rbx, %rax
+	stosq
+	pop %rbx
 next
-
 prim storebinc, ",b"
-	mov %bl, (%rdi)
-	inc %rdi
-	pop ToS
+	mov %rbx, %rax
+	stosb
+	pop %rbx
 next
-
 prim cell
-	shl $CELL_BITS, ToS
+	shl $CELL_BITS, %rbx
 next
-
 prim align // addr -- addr
-	// align to cell boundary
-	add $(CELL_SIZE-1), ToS
-	andb $0xfc, %bl
+	add $(CELL_SIZE-1), %rbx
+	andb $0xf8, %bl
 next
-
 prim isAnonymous "is-anon?" # addr -- bool
-	# is addr in the anonymous area?
 	mov var_anonCodeAreaAddr, %rdx
-	sub %rdx, ToS
+	sub %rdx, %rbx
 	xor %rdx, %rdx
-	cmp $SCRATCH_SIZE, ToS
+	cmp $SCRATCH_SIZE, %rbx
 	seta %dl
 	dec %rdx
-	mov %rdx, ToS
+	mov %rdx, %rbx
 next
-
-# Flow control #######################################
-
 prim endcol
-	poprs %rsi
-next
 prim return
 	poprs %rsi
 next
-
 prim data  # -- addr
-	push ToS
+	push %rbx
 	mov (%rsi), %rax
-	lea CELL_SIZE(%rsi), ToS
+	lea CELL_SIZE(%rsi), %rbx
 	lea CELL_SIZE(%rsi, %rax), %rsi
 next
-
 prim branch
 	add (%rsi), %rsi
 next
-
 prim zbranch   #  bool -- 
-	mov (%rsi), %rax
-	#lodsl                  # distance to branch
-	add $CELL_SIZE, %rsi
-	xor %rcx, %rcx
-	sub $CELL_SIZE, %rax   # because lodsl incremented %rsi
-	test ToS, ToS        # bool is zero?
-	setnz %cl
-	pop ToS
-	dec %rcx
-	and %rcx, %rax         # %rcx is 0 if %rdx is non-zero
-	add %rax, %rsi
+	lodsq
+	lea -CELL_SIZE(%rsi, %rax), %rax
+	test %rbx, %rbx
+	cmovz %rax, %rsi
+	pop %rbx
 next
-
 prim tailcall, "tail:"
 	mov (%rsi), %rsi
 	lea CELL_SIZE(%rsi), %rsi
 next
-
 prim tailcallTOS, "tailcall-tos"
-	lea CELL_SIZE(ToS), %rsi
-	pop ToS
+	lea CELL_SIZE(%rbx), %rsi
+	pop %rbx
 next
-
 prim call  # xt --
-	mov ToS, %rax
-	pop ToS
+	mov %rbx, %rax
+	pop %rbx
 	jmp *(%rax)
 next
-
 prim inline   # xt --
-	# TODO: this logic belongs in quote, not inline!
-	mov -4(%rdi), %rax
+	mov -CELL_SIZE(%rdi), %rax
 	cmp $quote, %rax
 	je prim_storeinc  # don't inline quoted words!
-	mov ToS, %rax
-	pop ToS
+	mov %rbx, %rax
+	pop %rbx
 	mov %rsi, %rdx
 	lea 4(%rax), %rsi
 1:
-	lodsl
+	lodsq
 	cmp $endcol, %rax
 	je 2f
-	stosl
+	stosq
 	jmp 1b
 2:
 	mov %rdx, %rsi
 next
-
-# prim select "?"
-# 	xor %rdx, %rdx
-# 	xor %rcx, %rcx
-# 	mov 8(%rsp), %rax  # cond
-# 	test %rax, %rax
-# 	setnz %dl
-# 	setz %cl
-# 	dec %rdx
-# 	dec %rcx
-# 	and (%rsp), %rdx  # else
-# 	and 4(%rsp), %rcx # then
-# 	addl %rcx, %rdx
-# 	lea 8(%rsp), %rsp
-# 	mov %rdx, (%rsp)
-# next
-
-# Numeric literals ###################################
-
 prim lit
-	push ToS
-	mov (%rsi), ToS
-	add $CELL_SIZE, %rsi
-next
-# we give this a different name to make code easier to read
 prim quote, "'"
-	push ToS
-	mov (%rsi), ToS
-	add $CELL_SIZE, %rsi
+	push %rbx
+	lodsq
+	mov %rax, %rbx
 next
-
-# Memory copying prims ###############################
-
 prim copyBytes, "copy-bytes"  # from nbytes to --
-	xchg %rdi, ToS  # save DP
-	pushrs %rsi      # save IP
 	pop %rcx
-	pop %rsi
+	pop %r10
+	xchg %rdi, %rbx
+	xchg %rsi, %r10
 	rep movsb
-	poprs %rsi
-	mov ToS, %rdi
-	pop ToS
+	mov %r10, %rsi
+	mov %rbx, %rdi
+	pop %rbx
 next
 prim copy, "copy" # from ncells to --
-	xchg %rdi, ToS # save DP
-	pushrs %rsi
-	pop %rdi
 	pop %rcx
-	pop %rsi
-	rep movsl
-	poprs %rsi
-	mov ToS, %rdi
-	pop ToS
+	pop %r10
+	xchg %rdi, %rbx
+	xchg %rsi, %r10
+	rep movsq
+	mov %r10, %rsi
+	mov %rbx, %rdi
+	pop %rbx
 next
 prim keep  # addr len -- addr
 	# move a temporary value len cells long from addr into the dictionary 
 	align_dp
 	mov %rsi, %rdx  # save IP
-	mov ToS, %rcx        # length in cells
+	mov %rbx, %rcx        # length in cells
 	pop %rsi        # get source
-	mov %rdi, ToS       # push permanent address
-	rep movsl
+	mov %rdi, %rbx       # push permanent address
+	rep movsq
 	mov %rdx, %rsi  # restore IP
 next
-prim forget  # cfa -- 
-	# take the next compiled word, and delete it and 
-	# everything following it in the dictionary
-	sub $CFA_OFFS, ToS
-	mov ToS, var_dictPtr
-	mov (ToS), ToS
-	mov ToS, var_dictionary
-	pop ToS
-next
-
-# String handling prims ##############################
-
-prim strEq "s=" # str str -- bool
+# prim forget  # cfa -- 
+prim strEq "s=" # sstr dstr -- bool
 	xor %rdx, %rdx
-	pushrs %rsi
-	pushrs %rdi
-	mov ToS, %rsi
-	pop %rdi
+	pop %r10
+	mov %rbx, %r11
+	xchg %rsi, %r10
+	xchg %rdi, %r11
 	mov (%rsi), %rcx
-	string_len_in_cells %rcx
-	inc %rcx  # extra one for the length field
+	lea 2(,%rcx, CELL_SIZE), %rcx
 	repe cmpsl
 	setnz %dl
 	dec %rdx
-	mov %rdx, ToS
-	poprs %rdi
-	poprs %rsi
+	mov %rdx, %rbx
+	mov %r10, %rsi
+	mov %r11, %rdi
 next
-
 prim lenz  // zstr -- int
-	pushrs %rdi
+	xchg %rbx, %rdi
 	xor %rcx, %rcx
 	dec %rcx
 	xor %rax, %rax
-	mov ToS, %rdi
 	repne scasb
 	inc %rcx
 	not %rcx
-	mov %rcx, ToS
-	poprs %rdi
+	mov %rbx, %rdi
+	mov %rcx, %rbx
 next
-
-
-# Numnber and date parser ###############################
 
 .section .data
 .align CELL_SIZE
@@ -1095,21 +797,22 @@ word number  #  str -- int bool
 	DATA one, cell, add, znumber
 end
 
+
+.section .text
 prim znumber  # zstr -- int bool
 	# see if zstr conforms to one of the supported 
 	# number formats: 123 -123 123.456 12:34:56 2012-12-31
 	xor %rax, %rax
 	xor %rdx, %rdx
 	pushrs %rsi
-	mov ToS, %rsi  # zstr in %rsi
-	# add $CELL_SIZE, %rsi
+	mov %rbx, %rsi  # zstr in %esi
 	# check for negative number
 	movb (%rsi), %al
 	cmpb $'-', %al
 	sete %al
 	add %rax, %rsi  # increment zstr if negative
-	push %rax
-	mov $jump_table, ToS
+	push %rax   # 1 if neg, 0 if pos
+	mov $jump_table, %rbx
 	xor %rax, %rax  # %rax is accumulator.
 
 .align CELL_SIZE
@@ -1126,13 +829,13 @@ _natural:
 
 .align CELL_SIZE
 _choose_handler:
-	# select handler
+	# select handler based on first non-digit
 	movb (%rsi), %dl
 	cmp $':', %dl
-	ja _num_err
+	ja _num_err  # not a supported number format
 	mov $number_char_class, %rcx
-	movzbl (%rcx, %rdx), %rcx
-	mov (ToS, %rcx, CELL_SIZE), %rcx
+	movzbq (%rcx, %rdx), %rcx
+	mov (%rbx, %rcx, CELL_SIZE), %rcx
 	jmp *%rcx
 
 .align CELL_SIZE
@@ -1167,12 +870,12 @@ _char_lit:
 	jnz _num_err
 	mov (%rsi), %al
 	jmp _num_done
+
 .align CELL_SIZE
 _time:
 	inc %rsi
 	times_60 %rax
 	jmp _natural
-
 .align CELL_SIZE
 _date:
 	inc %rsi
@@ -1240,10 +943,10 @@ _day:
 
 	# calculate missed century leap-days...
 	mov $100, %rcx
-	div %rcx      # divide %rax by 100 for centuries
-	mov %rax, ToS	
+	div %rcx      # divide %eax by 100 for centuries
+	mov %rax, %rbx	
 	shr $2, %rax    # divide 100 yr missed-leaps by 4 for 400 year leaps
-	sub ToS, %rax
+	sub %rbx, %rax
 	# convert years to days
 	xchg (%rsp), %rax
 	mov $BASE_4_YEAR, %rcx   # (1461 = 365.25 * 4) I love fixed-point. A base-4 fxp saves us a div!)
@@ -1254,16 +957,14 @@ _day:
 	add %rdx, %rax
 	add %rcx, %rax
 	add $LILIAN_CORRECTION, %rax  # Convert to Lilian date
-#	pop %rdx
-#	jmp _num_done
 	jmp _num_done
 #endif
 
 .align CELL_SIZE
 _num_err:
 	poprs %rsi
-	movq $0, (%rsp)  # over-write sign
-	mov $0, ToS
+	movl $0, (%rsp)  # over-write sign
+	mov $0, %rbx
 next
 
 .align CELL_SIZE
@@ -1276,29 +977,16 @@ _num_done:
 4:
 	poprs %rsi
 	push %rax
-	mov $-1, ToS
+	mov $-1, %rbx
 next
-
-
-# List prims #########################################
-
 prim length # list -- int 
 	xor %rcx, %rcx
-1:
-	mov (ToS), ToS
-	test ToS, ToS
+1:	mov (%rbx), %rbx
+	test %rbx, %rbx
 	loopnz 1b
-2:
-	not %rcx
-	mov %rcx, ToS
+2:	not %rcx
+	mov %rcx, %rbx
 next
-
-
-######################################################
-# Forth-style non-primitive words                    #
-######################################################
-
-# Startup code #######################################
 
 word initialiseVM
 	# initialise the dictionary pointer
@@ -1417,10 +1105,6 @@ end
 # Default handler for EOF is to exit. This is over-ridden
 # when reading from files passed on the commandline.
 variable EndOfFile, exit0
-
-string ErrorColour,   "[31m"
-string WarningColour, "[33m"
-string NoColour,      "[0m"
 
 word error
 	DATA inChannel, get, isATTY, zbranch, JUMP(1f)
@@ -1601,7 +1285,6 @@ end
 word fileLength  "file-length" # fd -- len
 	DATA statFD, st_size, get
 end
-
 
 # Memory management ######################################
 
@@ -1916,14 +1599,40 @@ word suppress, "`", call
 	DATA word, find, drop, storeinc
 end
 
-.section .rodata
+string DefaultPrompt, " ok "
+string byebye, "\n-- Toodle-pip!\n"
+string TooLong, "Word too long: "
+string ErrorUnhandled, "Unhandled exception: "
+string ErrorColour,   "[31m"
+string WarningColour, "[33m"
+string NoColour,      "[0m"
+string NotFound, " is neither a dictionary word nor a recognised number\n"
+string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
 
+
+constant zero, 0, "0"
+constant one,  1, "1"
+constant minus_one, -1 "-1"
 constant DoAddr,      do
 constant DoConstAddr, doconst
 constant DoDoesAddr,  dodoes
 constant WordBuffer, wordbuffer
 constant CellBits, CELL_BITS
 constant CellSize, CELL_SIZE
+
+# System call numbers
+constant SysExit,  SYS_exit
+constant SysRead,  SYS_read
+constant SysWrite, SYS_write
+constant SysOpen,  SYS_open
+constant SysClose, SYS_close
+constant SysStat,  SYS_fstat
+constant SysMmap,  SYS_mmap
+constant SysMunmap, SYS_munmap
+constant SysBrk,   SYS_brk
+constant SysIOCtl, SYS_ioctl
+constant SysTime,  SYS_time
+constant SysNanosleep, SYS_nanosleep
 
 #ifdef CANTILEVER_CHEAP_DATE
 constant CheapDate, -1
@@ -1933,6 +1642,25 @@ constant CheapDate, 0
 constant Base4Year, BASE_4_YEAR
 constant LilianCorrection, LILIAN_CORRECTION
 
+# basic IO
+constant stdin,  0
+constant stdout, 1
+constant stderr, 2
+
+variable inChannel, 0, "in-channel"
+variable outChannel, 1, "out-channel"
+variable errChannel, 2, "err-channel"
+
+# NOTE: values are octal!
+constant ReadOnly,   0
+constant WriteOnly,  01101
+constant ReadWrite,  02202
+
+
+variable NotFoundException, notFoundHandler
+
+variable rs0
+variable ds0
 variable argc
 variable argv
 variable argv0
@@ -1942,26 +1670,11 @@ variable bufpos
 variable bufend
 variable scratchpadAddr, , "scratchpad-addr"
 variable anonCodeAreaAddr, , "anon-code-area-addr"
-
-variable ds0
-variable rs0
-variable dp0
 variable flagTableAddr
 variable dictPtr, ,"dict-ptr"
-
-variable NotFoundException, notFoundHandler
-
-string WelcomeMessage "Welcome to Cantilever\n\n\tType an expression in Reverse-Polish form \n\tterminated with [33m;[0m or [33m=[0m (to see a numeric result). \n\tIf you have rlwrap installed you can use tab-completion\n"
-string byebye, "\n-- Toodle-pip!\n"
-string TooLong, "Word too long: "
-string NotFound, " is neither a dictionary word nor a recognised number\n"
-string InvalidEsc, "Invalid escape char: "
-string UnbalancedRSInBranch, "Unbalanced use of RS in one branch of pattern match at "
-string ErrorUnhandled, "Unhandled exception: "
-string DefaultPrompt, " ok "
-
-variable decimal_places, 0, "decimal-places"
+variable interpreter, interpret
 
 variable promptText, str_DefaultPrompt, "prompt-text"
-variable interpreter, interpret
+variable decimal_places
+variable curframe
 variable dictionary, link   # MUST BE LAST
