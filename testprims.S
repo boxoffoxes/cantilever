@@ -32,11 +32,18 @@ prim_\label:
 \label: .quad \ii
 .endm
 
-.macro variable label name
+.macro variable label name value=0
 	.section .data
 	.align CELL_SIZE
 \label:     .quad dovar
-var_\label: .quad 0
+var_\label: .quad \value
+.endm
+
+.macro constant label name value
+	.section .data
+	.align CELL_SIZE
+\label:     .quad doconst
+var_\label: .quad \value
 .endm
 
 #include "prims64.S"
@@ -381,10 +388,22 @@ start_of_tests:
 # isAnonymous
 # endcol
 # return
-# data
+
 .section .data
 .align CELL_SIZE
-test_zbranch: .quad do, zbranch,16, dec, return
+test_data: .quad do, data,24, dec,dec,dec, swap,dec,endcol
+.section .text
+# data
+	pushds $39
+	testprim test_data
+	expect $38
+	expect $test_data+24
+	check_stack
+
+
+.section .data
+.align CELL_SIZE
+test_zbranch: .quad do, zbranch,16, dec, endcol
 .section .text
 # branch
 # zbranch
@@ -405,8 +424,24 @@ test_zbranch: .quad do, zbranch,16, dec, return
 	testprim test_zbranch 3
 	expect $52
 	check_stack
+
+
+.section .data
+.align CELL_SIZE
+never_return: .quad do, dec, endcol
+test_tail:    .quad do, tailcall,never_return, dec, endcol
+test_tailtos: .quad do, quote,never_return, tailcallTOS, dec, endcol
+.section .text
 # tailcall
+	pushds $77
+	testprim test_tail
+	expect $76
+	check_stack
 # tailcallTOS
+	push $189
+	testprim test_tailtos
+	expect $188
+	check_stack
 # call
 	# non-prim words
 	pushds $test_call
@@ -434,10 +469,16 @@ test_quote:   .quad do, quote,cold_start, return
 	testprim test_quote
 	expect $cold_start
 	check_stack
+
+.section .data
+.align CELL_SIZE
+s1: .asciz "hello world"
+s5: .quad -1, -1
+.section .text
 # copyBytes
-	push $s1
-	push $12
-	push $s5
+	pushds $s1
+	pushds $12
+	pushds $s5
 	testprim copyBytes
 	cmpb $'h', s5
 	jne fail
@@ -449,80 +490,116 @@ test_quote:   .quad do, quote,cold_start, return
 # copy
 # keep
 # forget
+
+.section .data
+.align CELL_SIZE
+s2: .quad 1f-.
+	.asciz "hello worlds"
+1: .align CELL_SIZE
+s3: .quad 2f-.
+	.asciz "hello wolds"
+2: .align CELL_SIZE
+s4: .quad 3f-.
+	.asciz "hello worl"
+3: .align CELL_SIZE
+.section .text
 # strEq
+	pushds $s2
+	pushds $s3
+	testprim strEq 1
+	expect $0
+	check_stack
+
+	pushds $s2
+	pushds $s4
+	testprim strEq 2
+	expect $0
+	check_stack
+
+	pushds $s2
+	pushds $s2
+	testprim strEq 3
+	expect $-1
+	check_stack
 # lenz
-# znumber
-# length
-
-
-/*
-# _nxt  we're pretty sure next works by now!
-#	testprim _nxt 
-# _shr
-	pushds $-1
-	mov $60, %rcx
-	testprim _shr
+	pushds $decimal1
+	testprim lenz 1
 	expect $15
 	check_stack
-# _cpy
-# _cmpb and _cmpeq
-	pushds $0
-	mov $s1, %rsi
-	mov $s4, %rdi
-	mov $(s5-s4), %rcx
-	testprim _cmpmb
-	je fail
-	testprim _cmpeq
-	expect $0
-
-	pushds $0
-	mov $s1, %rsi
-	mov $s2, %rdi
-	mov $(s2-s1), %rcx
-	testprim _cmpmb
-	je fail
-	testprim _cmpeq
-	expect $0
-
-	pushds $0
-	mov $s1, %rsi
-	mov $s1, %rdi
-	mov $(s2-s1), %rcx
-	testprim _cmpmb
-	testprim _cmpeq
-	expect $1
+	pushds $s1
+	testprim lenz 2
+	expect $11
 	check_stack
-# jtnorm
-	pushds $17
-	pushds $10
-	pushds $18
-	testprim jtnorm
-	expect $7
 
-	pushds $-1
-	pushds $10
-	pushds $18
-	testprim jtnorm
-	expect $8
-
-	pushds $1
-	pushds $-10
-	pushds $0
-	testprim jtnorm
-	expect $10
-
+.section .data
+natural1: .asciz "1234"
+negative: .asciz "-1234"
+decimal1: .asciz "3.1415926535898"
+charlit1: .asciz "'x'"
+time1:    .asciz "00:10:01"
+date1:    .asciz "2000-01-01"
+.section .text
+# znumber
+	pushds $natural1
+	testprim znumber 1
+	expect $-1
+	expect $1234
 	check_stack
-# repeat
-	pushds $0
-	mov $17, %rcx
-	testprim rpt
-	expect $17
-	cmp $0, %rcx
-	jne fail
-	check_stack
-	
 
-*/
+	pushds $negative
+	testprim znumber 2
+	expect $-1
+	expect $-1234
+	check_stack
+
+	pushds $decimal1  # with zero decimal places
+	testprim znumber 3
+	expect $-1
+	expect $3
+	check_stack
+
+	movq $2, var_decimal_places
+	pushds $decimal1
+	testprim znumber 4
+	expect $-1
+	expect $314
+	check_stack
+
+	movq $15, var_decimal_places
+	pushds $decimal1
+	testprim znumber 5
+	expect $-1
+	mov $3141592653589800, %r10
+	expect %r10
+	check_stack
+
+	pushds $charlit1
+	testprim znumber 6
+	expect $-1
+	expect $'x'
+	check_stack
+
+	pushds $time1
+	testprim znumber 7
+	expect $-1
+	expect $601
+	check_stack
+
+	pushds $date1
+	testprim znumber 8
+	expect $-1
+	expect $152383
+	check_stack
+
+.section .data
+list: .quad (.+8), (.+8), (.+8), (.+8), (.+8), (.+8), 0
+.section .text
+# length
+	pushds $list
+	testprim length
+	expect $6
+	check_stack
+
 end_of_tests:
 	pushds $0
 	pushds $SYS_exit
@@ -551,13 +628,6 @@ test_consume:
 	.quad do, quote, 0x0f0f0f, return
 rpt:
 	# .quad do, repeat,inc, return
-
-.section .data
-s1: .asciz "hello world"
-s2: .asciz "hello worlds"
-s3: .asciz "hello wolds"
-s4: .asciz "hello worl"
-s5: .quad -1, -1
 
 .lcomm vrbl CELL_SIZE
 .lcomm buffer 4096
